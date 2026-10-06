@@ -7,6 +7,13 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#ifdef _WIN32
+// Windows: no signals. The loader's exception handler resumes the faulting thread
+// in woc_longjmp (src/compat_win.c: no unwinding through the faulting frames).
+typedef unsigned long long sigjmp_buf[32];
+extern "C" __attribute__((returns_twice)) int woc_setjmp(sigjmp_buf buffer);
+#define sigsetjmp(buffer, save) woc_setjmp(buffer)
+#endif
 
 extern "C" std::uint64_t runtime_disabled_optimizations;
 /// Temporary experiment bits: the second number in WOC_TOGGLE_FILE (runtime_memory.c).

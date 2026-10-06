@@ -6,6 +6,7 @@ wipeport.ini
 fsr4_shaders/
 pgo/
 *.png
+!launcher/wipeport.png
 last_run.log
 dist/
 packaging/runtime-paths.nix

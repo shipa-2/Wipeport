@@ -7,8 +7,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#ifdef _WIN32
+#include <windows.h>
+#undef near
+#else
 #include <ucontext.h>
 #include <unistd.h>
+#endif
 #include <x86intrin.h>
 
 namespace WocWriteLog {
@@ -105,16 +110,28 @@ void DumpRange(std::uint64_t address, std::uint64_t size) {
 
 extern "C" void wocgpu_dump_guest_writes(void* ucontext) {
     using namespace WocWriteLog;
-    const auto* uc = static_cast<const ucontext_t*>(ucontext);
-    const auto* g = uc->uc_mcontext.gregs;
-    WocFreeCheck::DumpAtFault(std::uint64_t(g[REG_RAX]), std::uint64_t(g[REG_R14]));
+#ifdef _WIN32
+    const CONTEXT* fault = static_cast<const EXCEPTION_POINTERS*>(ucontext)->ContextRecord;
+    WocFreeCheck::DumpAtFault(fault->Rax, fault->R14);
+#else
+    const auto* fault = static_cast<const ucontext_t*>(ucontext)->uc_mcontext.gregs;
+    WocFreeCheck::DumpAtFault(std::uint64_t(fault[REG_RAX]), std::uint64_t(fault[REG_R14]));
+#endif
     if (Mode() == 0) {
         return;
     }
+#ifdef _WIN32
+    // The loader passes EXCEPTION_POINTERS (see signal_context.cpp).
+    const CONTEXT* c = static_cast<const EXCEPTION_POINTERS*>(ucontext)->ContextRecord;
+    const std::uint64_t regs[] = {c->Rax, c->Rbx, c->Rcx, c->Rdx, c->Rsi, c->Rdi, c->R14, c->R15};
+#else
+    const auto* uc = static_cast<const ucontext_t*>(ucontext);
+    const auto* g = uc->uc_mcontext.gregs;
     const std::uint64_t regs[] = {std::uint64_t(g[REG_RAX]), std::uint64_t(g[REG_RBX]),
                                   std::uint64_t(g[REG_RCX]), std::uint64_t(g[REG_RDX]),
                                   std::uint64_t(g[REG_RSI]), std::uint64_t(g[REG_RDI]),
                                   std::uint64_t(g[REG_R14]), std::uint64_t(g[REG_R15])};
+#endif
     const char* names[] = {"rax", "rbx", "rcx", "rdx", "rsi", "rdi", "r14", "r15"};
     for (int i = 0; i < 8; ++i) {
         std::fprintf(stderr, "Write log: %s=%#llx\n", names[i], (unsigned long long)regs[i]);

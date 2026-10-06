@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifndef _WIN32
 #include <pthread.h>
 #include <errno.h>
 #include <time.h>
@@ -148,7 +147,9 @@ static ABI int32_t cond_init(GuestCond **out, void **attr, const char *name) {
     c->clock = a && a->clock == GUEST_CLOCK_MONOTONIC ? CLOCK_MONOTONIC : CLOCK_REALTIME;
     pthread_condattr_t native_attr;
     int e = pthread_condattr_init(&native_attr);
+#ifndef _WIN32 /* Windows: CLOCK_REALTIME only, deadlines are converted (cond_wait_until) */
     if (!e) e = pthread_condattr_setclock(&native_attr, c->clock);
+#endif
     if (!e) e = pthread_cond_init(&c->native, &native_attr);
     pthread_condattr_destroy(&native_attr);
     if (e) { free(c); return orbis_error(e); }
@@ -215,6 +216,17 @@ static int32_t cond_wait_until(GuestCond **cond, GuestMutex **mutex, const struc
     if (e) return e;
     if (!mutex || (uintptr_t)*mutex < 3 || !end) return orbis_error(EINVAL);
     ++waits;
+#ifdef _WIN32
+    struct timespec real;
+    if ((*cond)->clock != CLOCK_REALTIME) { /* the deadline on the realtime clock it waits on */
+        struct timespec now_real, now;
+        clock_gettime(CLOCK_REALTIME, &now_real); clock_gettime((*cond)->clock, &now);
+        const int64_t ns = ((int64_t)end->tv_sec - now.tv_sec) * 1000000000 + (end->tv_nsec - now.tv_nsec)
+                           + (int64_t)now_real.tv_sec * 1000000000 + now_real.tv_nsec;
+        real.tv_sec = (time_t)(ns / 1000000000); real.tv_nsec = (long)(ns % 1000000000);
+        end = &real;
+    }
+#endif
     const uint64_t start = runtime_wait_clock();
     const int e2 = pthread_cond_timedwait(&(*cond)->native, &(*mutex)->native, end);
     runtime_wait_note(0, runtime_wait_clock() - start);
@@ -325,26 +337,4 @@ void runtime_mutex_report(void) {
     printf("Runtime: mutexes created=%zu, locks=%zu, unlocks=%zu\n", created, locks, unlocks);
     printf("Runtime: condition variables created=%zu, waits=%zu, wakeups=%zu\n", conds, waits, wakeups);
 }
-#else
-static ABI int32_t posix_cond_init(GuestCond **c, void **a) { return posix_result(cond_init(c, a, NULL)); }
-static ABI int32_t posix_cond_destroy(GuestCond **c) { return posix_result(cond_destroy(c)); }
-static ABI int32_t posix_cond_wait(GuestCond **c, GuestMutex **m) { return posix_result(cond_wait(c, m)); }
-static ABI int32_t posix_cond_timedwait(GuestCond **c, GuestMutex **m, const GuestTimespec *t) { return posix_result(cond_abs_timedwait(c, m, t)); }
-static ABI int32_t posix_cond_signal(GuestCond **c) { return posix_result(cond_signal(c)); }
-static ABI int32_t posix_cond_broadcast(GuestCond **c) { return posix_result(cond_broadcast(c)); }
-uintptr_t runtime_mutex_resolve(const char *name) {
-    if (runtime_import_is(name, "0TyVk4MSLt0#libScePosix")) return (uintptr_t)posix_cond_init;
-    if (runtime_import_is(name, "RXXqi4CtF8w#libScePosix")) return (uintptr_t)posix_cond_destroy;
-    if (runtime_import_is(name, "Op8TBGY5KHg#libScePosix")) return (uintptr_t)posix_cond_wait;
-    if (runtime_import_is(name, "27bAgiJmOh0#libScePosix")) return (uintptr_t)posix_cond_timedwait;
-    if (runtime_import_is(name, "2MOy+rUfuhQ#libScePosix")) return (uintptr_t)posix_cond_signal;
-    if (runtime_import_is(name, "mkx2fVhNMsg#libScePosix")) return (uintptr_t)posix_cond_broadcast;
-    if (runtime_import_is(name, "2Tb92quprl0#libkernel")) return (uintptr_t)cond_init;
-    if (runtime_import_is(name, "g+PZd2hiacg#libkernel")) return (uintptr_t)cond_destroy;
-    if (runtime_import_is(name, "WKAXJ4XBPQ4#libkernel")) return (uintptr_t)cond_wait;
-    if (runtime_import_is(name, "BmMjYxmew1w#libkernel")) return (uintptr_t)cond_timedwait;
-    if (runtime_import_is(name, "kDh-NfxgMtE#libkernel")) return (uintptr_t)cond_signal;
-    if (runtime_import_is(name, "JGgj7Uvrl+A#libkernel")) return (uintptr_t)cond_broadcast;
-    if (runtime_import_is(name, "IafI2PxcPnQ#libkernel")) return (uintptr_t)mutex_timedlock; (void)name; return 0; }
-void runtime_mutex_report(void) { puts("Runtime: Windows mutex backend not implemented"); }
-#endif
+

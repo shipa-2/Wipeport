@@ -9,7 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#ifndef _WIN32
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -17,6 +16,32 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include <windows.h>
+/* 64-bit sizes and times; directories are never opened as CRT descriptors. */
+typedef struct _stat64 HostStat;
+#define host_stat(path,s) _stat64(path,s)
+#define host_fstat(fd,s) _fstat64(fd,s)
+#define host_lseek _lseeki64
+#define O_DIRECTORY 0x40000000 /* marker, removed before _open */
+/* The CRT reads and writes at most INT_MAX bytes per call. */
+static ssize_t host_read(int h,void *buffer,uint64_t size) { return read(h,buffer,(unsigned)(size>0x7ffff000 ? 0x7ffff000 : size)); }
+static ssize_t host_write(int h,const void *buffer,uint64_t size) { return write(h,buffer,(unsigned)(size>0x7ffff000 ? 0x7ffff000 : size)); }
+/* POSIX rename replaces an existing target; the CRT's fails. */
+static int host_rename(const char *a,const char *b) {
+    if (MoveFileExA(a,b,MOVEFILE_REPLACE_EXISTING)) return 0;
+    errno=compat_errno_from_win32(GetLastError()); return -1;
+}
+#else
+typedef struct stat HostStat;
+#define host_stat(path,s) stat(path,s)
+#define host_fstat(fd,s) fstat(fd,s)
+#define host_lseek lseek
+#define host_read read
+#define host_write write
+#define host_rename rename
+#define O_BINARY 0
+#endif
 #define ERR(n) ((int32_t)(UINT32_C(0x80020000)|(n)))
 #define MAX_FILES 1024
 #define MAX_MOUNTS 16
@@ -51,6 +76,22 @@ static int temp_name(const char *name) {
     return n>6 && !strcmp(name+n-6,".bbtmp");
 }
 /* Copies left by a crash (none of them open): removed when their directory is mounted. */
+/* Guest dirent type of a directory entry: 4 directory, 8 file, 10 link, 0 other. */
+static unsigned char entry_type(const char *dir,const struct dirent *e) {
+#ifdef _WIN32
+    char child[1100]; HostStat entry;
+    snprintf(child,sizeof(child),"%s/%s",dir,e->d_name);
+    return host_stat(child,&entry) ? 0 : S_ISDIR(entry.st_mode) ? 4 : S_ISREG(entry.st_mode) ? 8 : 0;
+#else
+    unsigned char type=e->d_type;
+    if (type==DT_LNK || type==DT_UNKNOWN) {
+        char child[1100]; struct stat entry;
+        snprintf(child,sizeof(child),"%s/%s",dir,e->d_name);
+        if (!stat(child,&entry)) type=S_ISDIR(entry.st_mode) ? DT_DIR : S_ISREG(entry.st_mode) ? DT_REG : type;
+    }
+    return type==DT_DIR ? 4 : type==DT_REG ? 8 : type==DT_LNK ? 10 : 0;
+#endif
+}
 static void remove_stale_temps(const char *dir,int depth) {
     DIR *d=opendir(dir);
     if (!d) return;
@@ -62,7 +103,7 @@ static void remove_stale_temps(const char *dir,int depth) {
             int open_now=0;
             for (int i=3;i<MAX_FILES;++i) if (files[i].used && files[i].temp && !strcmp(files[i].temp,path)) open_now=1;
             if (!open_now && !unlink(path)) printf("Runtime: removed %s (a save interrupted earlier; the file it would have replaced is intact)\n",path);
-        } else if (depth<4 && e->d_type==DT_DIR) remove_stale_temps(path,depth+1);
+        } else if (depth<4 && entry_type(dir,e)==4) remove_stale_temps(path,depth+1);
     }
     closedir(d);
 }
@@ -134,6 +175,9 @@ static int translate(const char *guest,char *out,size_t size) {
  * After a miss, the host path is matched component by component ignoring case; true when it was
  * corrected (same length: only case differs). Only on misses: no cost for found files. */
 static int fix_case(char *path) {
+#ifdef _WIN32
+    (void)path; return 0; /* NTFS ignores case already */
+#endif
     if (path[0]!='/') return 0;
     char out[1024]="", trial[1024], part[256];
     const char *p=path;
@@ -171,7 +215,7 @@ static int host_flags(int flags) {
     if (flags&0x400) r|=O_TRUNC;
     if (flags&0x800) r|=O_EXCL;
     if (flags&0x20000) r|=O_DIRECTORY;
-    return r|O_CLOEXEC;
+    return r|O_CLOEXEC|O_BINARY;
 }
 static void free_listing(Listing *l) { if (l) { free(l->names); free(l->offsets); free(l->types); free(l); } }
 static Listing *list_directory(const char *path) {
@@ -192,6 +236,9 @@ static Listing *list_directory(const char *path) {
         if (!l->offsets || !l->types || !l->names) { fputs("Out of memory listing directory\n",stderr); exit(1); }
         memcpy(l->names+bytes,e->d_name,n);
         l->offsets[l->count]=bytes;
+#ifdef _WIN32
+        l->types[l->count]=entry_type(path,e);
+#else
         unsigned char type=e->d_type;
         if (type==DT_LNK || type==DT_UNKNOWN) {
             struct stat entry;
@@ -199,19 +246,31 @@ static Listing *list_directory(const char *path) {
                 type=S_ISDIR(entry.st_mode) ? DT_DIR : S_ISREG(entry.st_mode) ? DT_REG : type;
         }
         l->types[l->count]=type==DT_DIR ? 4 : type==DT_REG ? 8 : type==DT_LNK ? 10 : 0;
+#endif
         ++l->count; bytes+=n;
     }
     closedir(d);
     return l;
 }
-static void convert_stat(const struct stat *s,GuestStat *g) {
+static void convert_stat(const HostStat *s,GuestStat *g) {
     memset(g,0,sizeof(*g));
     g->dev=(uint32_t)s->st_dev; g->ino=(uint32_t)s->st_ino;
-    g->mode=(uint16_t)s->st_mode; g->nlink=(uint16_t)s->st_nlink;
-    g->size=s->st_size; g->blocks=s->st_blocks; g->blksize=(uint32_t)s->st_blksize;
+    g->nlink=(uint16_t)s->st_nlink;
+    g->size=s->st_size;
+#ifdef _WIN32
+    /* FreeBSD mode bits: directories rwxr-xr-x, files rw-r--r--. */
+    g->mode=(uint16_t)(S_ISDIR(s->st_mode) ? 0040755 : 0100644);
+    g->blocks=(s->st_size+511)/512; g->blksize=4096;
+    g->atime=(GuestTimespec){s->st_atime,0};
+    g->mtime=(GuestTimespec){s->st_mtime,0};
+    g->ctime=(GuestTimespec){s->st_ctime,0};
+#else
+    g->mode=(uint16_t)s->st_mode;
+    g->blocks=s->st_blocks; g->blksize=(uint32_t)s->st_blksize;
     g->atime=(GuestTimespec){s->st_atim.tv_sec,s->st_atim.tv_nsec};
     g->mtime=(GuestTimespec){s->st_mtim.tv_sec,s->st_mtim.tv_nsec};
     g->ctime=(GuestTimespec){s->st_ctim.tv_sec,s->st_ctim.tv_nsec};
+#endif
     g->birthtime=g->ctime;
 }
 static File *get(int fd) {
@@ -255,9 +314,9 @@ static void current_copy(char *path,size_t size,int write) {
 }
 /* Returns the descriptor of the copy, or -(errno). */
 static int open_for_commit(const char *path,const char *source,int flags,int mode,char **commit,char **temp) {
-    int hf=host_flags(flags);
-    struct stat s;
-    int exists=!stat(source,&s);
+    int hf=host_flags(flags)&~O_DIRECTORY;
+    HostStat s;
+    int exists=!host_stat(source,&s);
     if (exists && !S_ISREG(s.st_mode)) { int h=open(path,hf,mode ? mode : 0644); return h<0 ? -errno : h; }
     if (exists && (hf&O_CREAT) && (hf&O_EXCL)) return -EEXIST;
     if (!exists && !(hf&O_CREAT)) return -ENOENT;
@@ -265,10 +324,10 @@ static int open_for_commit(const char *path,const char *source,int flags,int mod
     char *t=malloc(n), *c=strdup(path);
     if (!t || !c) { free(t); free(c); return -ENOMEM; }
     snprintf(t,n,"%s.%u.bbtmp",path,__atomic_add_fetch(&temp_serial,1,__ATOMIC_RELAXED));
-    int out=open(t,O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC,exists ? (int)(s.st_mode&07777) : mode ? mode : 0644);
+    int out=open(t,O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC|O_BINARY,exists ? (int)(s.st_mode&07777) : mode ? mode : 0644);
     int e=out<0 ? errno : 0;
     if (!e && exists && !(hf&O_TRUNC)) {
-        int in=open(source,O_RDONLY|O_CLOEXEC);
+        int in=open(source,O_RDONLY|O_CLOEXEC|O_BINARY);
         if (in<0 || copy_contents(in,out)) e=errno ? errno : EIO;
         if (in>=0) close(in);
     }
@@ -288,14 +347,16 @@ static void sync_directory(const char *file) {
     char *slash=strrchr(dir,'/');
     if (!slash) return;
     *slash=0;
+#ifndef _WIN32 /* NTFS: a rename is durable without it (and a directory cannot be opened) */
     int d=open(dir,O_RDONLY|O_DIRECTORY|O_CLOEXEC);
     if (d>=0) { fsync(d); close(d); }
+#endif
 }
 static int commit_file(const File *f) {
     if (!f->dirty) { close(f->host); unlink(f->temp); return 0; } /* opened for writing, not written */
     int e=fsync(f->host) ? errno : 0;
     close(f->host);
-    if (!e && rename(f->temp,f->commit)) e=errno;
+    if (!e && host_rename(f->temp,f->commit)) e=errno;
     if (e) {
         fprintf(stderr,"Runtime: save file %s not replaced (%s); the old one is kept\n",f->path,strerror(e));
         unlink(f->temp);
@@ -314,13 +375,28 @@ static int64_t do_open(const char *guest,int flags,int mode) {
     snprintf(current,sizeof(current),"%s",path);
     if (save_path(guest)) current_copy(current,sizeof(current),0);
     int host;
+    HostStat s;
+    Listing *dir=NULL;
+#ifdef _WIN32
+    /* Windows cannot open a directory as a CRT descriptor: directories are listings only. */
+    if (!host_stat(current,&s) && S_ISDIR(s.st_mode)) {
+        if (flags&3) return -EISDIR;
+        if (!(dir=list_directory(current))) return -EACCES;
+        host=-1;
+        goto opened;
+    } else if (flags&0x20000) {
+        e=errno==ENOENT ? ENOENT : ENOTDIR;
+        if (e==ENOENT) { ++missing; printf("Runtime: open(%s) -> not found\n",guest); }
+        return -e;
+    }
+#endif
     if (save_path(guest) && (flags&3)) {
         host=open_for_commit(path,current,flags,mode,&commit,&temp);
         if (host<0) { errno=-host; host=-1; }
     } else {
-        host=open(current,host_flags(flags),mode ? mode : 0644);
+        host=open(current,host_flags(flags)&~O_DIRECTORY,mode ? mode : 0644);
         if (host<0 && errno==ENOENT && !(flags&0x200) && !save_path(guest) && fix_case(current)) {
-            host=open(current,host_flags(flags),mode ? mode : 0644);
+            host=open(current,host_flags(flags)&~O_DIRECTORY,mode ? mode : 0644);
             snprintf(path,sizeof(path),"%s",current); // the directory listing below uses it
         }
     }
@@ -331,14 +407,17 @@ static int64_t do_open(const char *guest,int flags,int mode) {
         if (e==ENOENT) { ++missing; printf("Runtime: open(%s) -> not found\n",guest); }
         return -e;
     }
-    struct stat s;
-    Listing *dir=NULL;
+#ifdef _WIN32
+    if (host_fstat(host,&s)) memset(&s,0,sizeof(s));
+opened:
+#else
     if (!fstat(host,&s) && S_ISDIR(s.st_mode)) dir=list_directory(path);
+#endif
     pthread_mutex_lock(&lock);
     int fd=-1;
     for (int i=3;i<MAX_FILES;++i) if (!files[i].used) { fd=i; break; }
     if (fd<0) {
-        pthread_mutex_unlock(&lock); close(host); free_listing(dir);
+        pthread_mutex_unlock(&lock); if (host>=0) close(host); free_listing(dir);
         if (temp) unlink(temp);
         free(commit); free(temp); return -EMFILE;
     }
@@ -353,7 +432,7 @@ static int64_t do_open(const char *guest,int flags,int mode) {
         static unsigned traced;
         if (realpath(path,actual) && realpath(mod_root,root)) {
             size_t n=strlen(root);
-            if (!strncmp(actual,root,n) && actual[n]=='/' &&
+            if (!strncmp(actual,root,n) && (actual[n]=='/' || actual[n]=='\\') &&
                 __atomic_fetch_add(&traced,1,__ATOMIC_RELAXED)<32)
                 printf("Mods: open %s -> %s\n",guest,actual);
         }
@@ -372,7 +451,7 @@ static int64_t do_close(int fd) {
     free_listing(closed.dir);
     int result=0;
     if (closed.temp) result=commit_file(&closed);
-    else close(closed.host);
+    else if (closed.host>=0) close(closed.host);
     if (save_trace() && save_path(closed.path))
         printf("Save trace: close(fd %d, %s)%s -> %d\n",fd,closed.path,closed.temp ? closed.dirty ? " commit" : " unwritten" : "",result);
     free(closed.commit); free(closed.temp);
@@ -407,7 +486,7 @@ static void touch_for_write(void *buffer,uint64_t size) {
 static ssize_t read_retrying(int h,void *buffer,uint64_t size,int64_t offset,int positional) {
     ssize_t n=-1;
     for (int attempt=0; attempt<8; ++attempt) {
-        n=positional ? pread(h,buffer,size,offset) : read(h,buffer,size);
+        n=positional ? pread(h,buffer,size,offset) : host_read(h,buffer,size);
         if (n>=0 || errno!=EFAULT) break;
         touch_for_write(buffer,size);
     }
@@ -448,7 +527,7 @@ static int64_t do_write(int fd,const void *buffer,uint64_t size) {
     int h=host_fd_written(fd);
     if (h<0) return -EBADF;
     touch_for_read(buffer,size);
-    ssize_t n=write(h,buffer,size);
+    ssize_t n=host_write(h,buffer,size);
     if (n<0) return -errno;
     __atomic_add_fetch(&writes,1,__ATOMIC_RELAXED);
     return n;
@@ -470,26 +549,36 @@ static int64_t do_lseek(int fd,int64_t offset,int whence) {
         if (whence==0 && offset>=0) { f->position=(size_t)offset; return offset; }
         return -EINVAL;
     }
-    off_t r=lseek(f->host,offset,whence);
+    int64_t r=host_lseek(f->host,offset,whence);
     return r<0 ? -errno : r;
 }
 static int64_t do_fstat(int fd,GuestStat *out) {
     if (save_trace()) { File *t=get(fd); if (t && save_path(t->path)) printf("Save trace: fstat(fd %d)\n",fd); }
     int h=host_fd(fd);
+    HostStat s;
+#ifdef _WIN32
+    if (h<0) { /* directory: a listing only, stat the path it was opened with */
+        File *f=get(fd); char path[1024];
+        if (!f || !f->dir) return -EBADF;
+        if (!out) return -EFAULT;
+        if (translate(f->path,path,sizeof(path)) || host_stat(path,&s)) return -EBADF;
+        convert_stat(&s,out); return 0;
+    }
+#else
     if (h<0) return -EBADF;
+#endif
     if (!out) return -EFAULT;
-    struct stat s;
-    if (fstat(h,&s)) return -errno;
+    if (host_fstat(h,&s)) return -errno;
     convert_stat(&s,out); return 0;
 }
 static int64_t do_stat(const char *guest,GuestStat *out) {
-    char path[1024]; struct stat s;
+    char path[1024]; HostStat s;
     int e=translate(guest,path,sizeof(path));
     if (e) return -e;
     if (save_path(guest)) current_copy(path,sizeof(path),0);
     if (!out) return -EFAULT;
-    int r=stat(path,&s) ? -errno : 0;
-    if (r==-ENOENT && !save_path(guest) && fix_case(path)) r=stat(path,&s) ? -errno : 0;
+    int r=host_stat(path,&s) ? -errno : 0;
+    if (r==-ENOENT && !save_path(guest) && fix_case(path)) r=host_stat(path,&s) ? -errno : 0;
     if (save_trace() && save_path(guest)) printf("Save trace: stat(%s) -> %d, %lld bytes\n",guest,r,r ? -1LL : (long long)s.st_size);
     if (r) return r;
     convert_stat(&s,out); return 0;
@@ -539,14 +628,18 @@ static int64_t do_rename(const char *from,const char *to) {
     int e=translate(from,a,sizeof(a));
     if (!e) e=translate(to,b,sizeof(b));
     if (e) return -e;
-    int r=rename(a,b) ? -errno : 0;
+    int r=host_rename(a,b) ? -errno : 0;
     if (save_trace() && (save_path(from) || save_path(to))) printf("Save trace: rename(%s, %s) -> %d\n",from,to,r);
     return r;
 }
 static int64_t do_ftruncate(int fd,int64_t length) {
     int h=host_fd_written(fd);
     if (h<0) return -EBADF;
+#ifdef _WIN32
+    return _chsize_s(h,length) ? -errno : 0;
+#else
     return ftruncate(h,length) ? -errno : 0;
+#endif
 }
 static int64_t do_truncate(const char *guest,int64_t length) {
     if (game_path(guest)) return -EROFS;
@@ -555,7 +648,15 @@ static int64_t do_truncate(const char *guest,int64_t length) {
     if (e) return -e;
     if (save_path(guest)) current_copy(path,sizeof(path),1);
     if (save_trace() && save_path(guest)) printf("Save trace: truncate(%s, %lld)\n",guest,(long long)length);
+#ifdef _WIN32
+    int h=open(path,O_RDWR|O_BINARY);
+    if (h<0) return -errno;
+    int r=_chsize_s(h,length) ? -errno : 0;
+    close(h);
+    return r;
+#else
     return truncate(path,length) ? -errno : 0;
+#endif
 }
 static int64_t do_fsync(int fd) { int h=host_fd(fd); if (h<0) return -EBADF; return fsync(h) ? -errno : 0; }
 static int64_t do_access(const char *guest,int mode) {
@@ -563,6 +664,9 @@ static int64_t do_access(const char *guest,int mode) {
     int e=translate(guest,path,sizeof(path));
     if (e) return -e;
     if (save_path(guest)) current_copy(path,sizeof(path),0);
+#ifdef _WIN32
+    mode&=6; /* X_OK is invalid for the CRT */
+#endif
     int r=access(path,mode&7) ? -errno : 0;
     if (r==-ENOENT && !save_path(guest) && fix_case(path)) r=access(path,mode&7) ? -errno : 0;
     return r;
@@ -635,8 +739,3 @@ void runtime_file_report(void) {
     printf("Runtime: files opened=%zu, reads=%zu (%llu bytes), writes=%zu, not found=%zu\n",
            opens,reads,(unsigned long long)bytes_read,writes,missing);
 }
-#else
-uintptr_t runtime_file_resolve(const char *name) { (void)name; return 0; }
-void runtime_file_report(void) {}
-void runtime_file_configure(const char *a,const char *u) { (void)a; (void)u; }
-#endif

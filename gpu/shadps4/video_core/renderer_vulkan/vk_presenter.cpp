@@ -18,6 +18,9 @@
 #include "video_core/renderer_vulkan/vk_presenter.h"
 #include "core/vr/openxr_host.h"
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
+#ifdef MemoryBarrier
+#undef MemoryBarrier // winnt.h's macro (through fmt) clashes with vk::MemoryBarrier
+#endif
 #include "video_core/texture_cache/image.h"
 
 #include <algorithm>

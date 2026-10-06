@@ -291,7 +291,7 @@ public:
     }
 
     std::thread::id GetGpuCommandProcessorThread();
-#ifdef __linux__
+#if defined(__linux__) || defined(_WIN32)
     u32 GetGpuCommandProcessorThreadId();
 #endif
 

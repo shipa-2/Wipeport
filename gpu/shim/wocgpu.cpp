@@ -6,7 +6,9 @@
 #include "core/vr/vr_runtime.h"
 #include "core/libraries/system/systemservice.h"
 #include "wocport_copy.h"
+#ifndef _WIN32
 #include <sys/resource.h>
+#endif
 #include "wocport_free_check.h"
 #include "wocport_toggles.h"
 #include <algorithm>
@@ -296,7 +298,11 @@ extern "C" int wocgpu_init(const WocGpuConfig* config) {
     StartProfileWriter();
 #endif
     g_sdk_version = config->sdk_version;
+#ifdef _WIN32
+    if (config->user_dir && !std::getenv("WOC_GPU_USER_DIR")) _putenv_s("WOC_GPU_USER_DIR", config->user_dir);
+#else
     if (config->user_dir) setenv("WOC_GPU_USER_DIR", config->user_dir, 0);
+#endif
     Core::Emulator::FillElfInfo(*config);
     // wocport (AstroQuest): the emulated PS VR headset, and through OpenXR (SteamVR) a headset of
     // this machine, for a title that supports one: before Vulkan, whose instance and device have

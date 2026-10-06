@@ -20,6 +20,16 @@
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 
 // DejaVu Sans (Cyrillic), embedded (third_party/fonts, Bitstream Vera license).
+#ifdef _WIN32
+asm(".section .rdata,\"dr\"\n"
+    ".balign 16\n"
+    ".global woc_font_ttf\n"
+    "woc_font_ttf:\n"
+    ".incbin \"" WOC_FONT_PATH "\"\n"
+    ".global woc_font_ttf_end\n"
+    "woc_font_ttf_end:\n"
+    ".text\n");
+#else
 asm(".section .rodata\n"
     ".balign 16\n"
     ".hidden woc_font_ttf\n"
@@ -30,6 +40,7 @@ asm(".section .rodata\n"
     ".global woc_font_ttf_end\n"
     "woc_font_ttf_end:\n"
     ".previous\n");
+#endif
 extern "C" const unsigned char woc_font_ttf[];
 extern "C" const unsigned char woc_font_ttf_end[];
 

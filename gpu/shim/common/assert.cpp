@@ -13,7 +13,11 @@ extern "C" __attribute__((weak)) volatile int runtime_restarting; // absent in t
 void assert_fail_impl() {
     if (&runtime_restarting && runtime_restarting) {
         for (;;) {
+#ifdef _WIN32
+            sleep(3600);
+#else
             pause();
+#endif
         }
     }
     std::fflush(stdout);

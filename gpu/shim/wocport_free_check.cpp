@@ -16,7 +16,9 @@
 #include <sys/mman.h>
 #include <sys/syscall.h>
 #include <csignal>
+#ifndef _WIN32
 #include <ucontext.h>
+#endif
 #include <unordered_set>
 #include <sys/uio.h>
 #include <unistd.h>
@@ -661,7 +663,12 @@ constexpr u64 GcHook = ImageBase + 0x26aa986;
 int TrapMode() {
     static const int mode = [] {
         const char* env = std::getenv("WOC_LABEL_TRAP");
+#ifdef _WIN32
+        (void)env;
+        const int m = 0; // the traps single-step with signals
+#else
         const int m = Enabled() && env && (env[0] == '1' || env[0] == '2') ? env[0] - '0' : 0;
+#endif
         if (m != 0) {
             InstallStepTrap();
             if (m == 2 && !InstallFreeHook()) {
@@ -744,6 +751,7 @@ void NoteFenceWritten(u64 label, u64 write_ns) {
     }
 }
 
+#ifndef _WIN32
 namespace {
 /// Threads single-stepping the write that faulted on a trapped page (TF set): the page is
 /// writable for that one instruction, then read-only again (OnStepTrap). A table instead of
@@ -1068,6 +1076,15 @@ bool OnTrapFault(void* ucontext, u64 address) {
     Emit(line, n, sizeof(line));
     return true;
 }
+
+#else
+// Windows: no label traps (they single-step the faulting write with signals).
+namespace {
+void InstallStepTrap() {}
+bool InstallFreeHook() { return false; }
+} // namespace
+bool OnTrapFault(void*, u64) { return false; }
+#endif
 
 bool OnStaleTrapFault(u64 address) {
     if (TrapMode() != 1) {

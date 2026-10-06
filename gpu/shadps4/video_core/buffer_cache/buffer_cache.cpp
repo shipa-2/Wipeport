@@ -39,7 +39,6 @@
 #include <string>
 #include <fmt/format.h>
 #include <sys/mman.h>
-#include <ucontext.h>
 #include "common/signal_context.h"
 #include "core/signals.h"
 #include <vk_mem_alloc.h>
@@ -2717,11 +2716,10 @@ bool VramTrapHandler(void* context, void* fault_address) {
             return false;
         }
     }
-    const auto* g = static_cast<const ucontext_t*>(context)->uc_mcontext.gregs;
-    const u64 rip = u64(g[REG_RIP]);
+    const u64 rip = u64(Common::GetRip(context));
     constexpr u64 Image = 0x800000000ull, ImageEnd = 0x810000000ull;
     u64 caller = 0;
-    const auto* stack = reinterpret_cast<const u64*>(g[REG_RSP]);
+    const auto* stack = reinterpret_cast<const u64*>(Common::GetRsp(context));
     for (u32 i = 0; i < 48; ++i) {
         if (stack[i] >= Image && stack[i] < ImageEnd) {
             caller = stack[i] - Image;

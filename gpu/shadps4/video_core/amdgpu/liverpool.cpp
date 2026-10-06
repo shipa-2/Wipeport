@@ -127,8 +127,8 @@ void Liverpool::Process(std::stop_token stoken) {
         WocStats::gpu_thread_clock.store(static_cast<int>(clock));
     }
     gpu_id = std::this_thread::get_id();
-#ifdef __linux__
-    gpu_tid = gettid();
+#if defined(__linux__) || defined(_WIN32)
+    gpu_tid = gettid(); // Windows: Rasterizer::OnStageA compares it (std::thread::id costs syscalls)
 #endif
 
     while (!stoken.stop_requested()) {

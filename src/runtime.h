@@ -3,13 +3,23 @@
 #include <time.h>
 #include <stdint.h>
 #include <stddef.h>
-#ifndef _WIN32
+#ifdef _WIN32
+#include "compat_win.h"
+/* The clock host condition variables wait on: winpthreads accepts only CLOCK_REALTIME
+ * (pthread_condattr_setclock(CLOCK_MONOTONIC) fails with EINVAL). */
+#define RUNTIME_COND_CLOCK CLOCK_REALTIME
+/* No signals on Windows: the exception handler resumes the thread in woc_longjmp
+ * (gpu/shim/wocport_toggles.h uses the same buffer type). */
+typedef woc_jmp_buf sigjmp_buf;
+#define sigsetjmp(buffer, save) woc_setjmp(buffer)
+#else
 #include <setjmp.h>
+#define RUNTIME_COND_CLOCK CLOCK_MONOTONIC
+#endif
 /* Recovery point for speculative guest memory reads on this thread (probe.c fault handler). */
 extern __thread sigjmp_buf *runtime_fault_recover;
 /* Restarts the game (in-game settings menu, render resolution change). */
 void runtime_restart(void);
-#endif
 #define ABI __attribute__((sysv_abi))
 typedef void (ABI *GuestCallback)(void);
 void runtime_start(uint64_t capabilities);
@@ -90,6 +100,8 @@ void runtime_thread_keys_cleanup(void);
 /* Guest-visible errno values are FreeBSD's. */
 int32_t runtime_guest_errno(int host_errno);
 void *runtime_low_map(size_t size, int prot);
+/* Windows: reserves the PS4 user address range as a placeholder (no-op elsewhere). */
+void runtime_memory_reserve(void);
 uintptr_t runtime_ajm_resolve(const char *name);
 void runtime_ajm_report(void);
 uintptr_t runtime_audio_resolve(const char *name);

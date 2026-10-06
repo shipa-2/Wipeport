@@ -43,16 +43,43 @@ endif()
 find_package(Vulkan REQUIRED)
 find_package(fmt REQUIRED)
 find_package(Boost REQUIRED)
-find_package(magic_enum REQUIRED)
+# Windows: MSYS2 has no magic_enum/miniz packages; the submodules are used instead.
+find_package(magic_enum QUIET)
+if (NOT magic_enum_FOUND)
+    add_library(magic_enum INTERFACE)
+    add_library(magic_enum::magic_enum ALIAS magic_enum)
+    target_include_directories(magic_enum INTERFACE third_party/magic_enum/include
+                                                    third_party/magic_enum/include/magic_enum)
+endif()
 find_package(tsl-robin-map REQUIRED)
-find_package(VulkanMemoryAllocator CONFIG REQUIRED)
+find_package(VulkanMemoryAllocator CONFIG QUIET)
+if (NOT VulkanMemoryAllocator_FOUND)
+    # MSYS2 ships the header (include/vma/vk_mem_alloc.h) without a CMake package.
+    find_path(VMA_INCLUDE_DIR vk_mem_alloc.h PATH_SUFFIXES vma REQUIRED)
+    add_library(VulkanMemoryAllocator INTERFACE)
+    add_library(GPUOpen::VulkanMemoryAllocator ALIAS VulkanMemoryAllocator)
+    target_include_directories(VulkanMemoryAllocator INTERFACE ${VMA_INCLUDE_DIR})
+endif()
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(XXHASH REQUIRED IMPORTED_TARGET libxxhash)
 pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
-pkg_check_modules(X11 REQUIRED IMPORTED_TARGET x11)
+if (NOT WIN32)
+    pkg_check_modules(X11 REQUIRED IMPORTED_TARGET x11)
+endif()
 # PS VR in a headset of this machine (AstroQuest's OpenXR host): SteamVR or another OpenXR runtime.
 pkg_check_modules(OPENXR REQUIRED IMPORTED_TARGET openxr)
-find_package(miniz REQUIRED)
+# Windows: MSYS2 has no miniz package; the submodule is used instead.
+find_package(miniz QUIET)
+if (NOT miniz_FOUND)
+    set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(BUILD_FUZZERS OFF CACHE BOOL "" FORCE)
+    set(BUILD_SHARED_LIBS OFF)
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+    add_subdirectory(third_party/miniz EXCLUDE_FROM_ALL)
+    unset(CMAKE_POLICY_VERSION_MINIMUM)
+    add_library(miniz::miniz ALIAS miniz)
+endif()
 find_package(Zydis REQUIRED)
 find_program(GLSLANG_COMPILER NAMES glslang glslangValidator REQUIRED)
 
@@ -63,6 +90,15 @@ add_subdirectory(third_party/sirit EXCLUDE_FROM_ALL)
 set(FFX_VK_PORTABLE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(FFX_VK_PORTABLE_BUILD_PROBE OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/fsr-vulkan EXCLUDE_FROM_ALL)
+if (WIN32)
+    foreach(target ffx_vulkan_fsr3_host_1_1_4 ffx_vulkan_fsr3_vk_backend_1_1_4)
+        if (TARGET ${target})
+            target_compile_options(${target} PRIVATE -include ${CMAKE_CURRENT_SOURCE_DIR}/shim/ffx_mingw.h)
+        endif()
+    endforeach()
+    # sirit's stream.h calls std::abort without <cstdlib> (libc++ does not include it).
+    target_compile_options(sirit PRIVATE -include cstdlib)
+endif()
 
 # Host shaders -> headers (same scheme as shadPS4's host_shaders/CMakeLists.txt).
 set(SHADER_SRC ${CMAKE_CURRENT_SOURCE_DIR}/shadps4/video_core/host_shaders)
@@ -134,7 +170,14 @@ file(GLOB CP_SOURCES CONFIGURE_DEPENDS cp/*.cpp)
 file(GLOB PSVR_SOURCES CONFIGURE_DEPENDS shadps4/core/libraries/hmd/*.cpp shadps4/core/libraries/vr_tracker/*.cpp
     shadps4/core/libraries/camera/*.cpp shadps4/core/libraries/json/*.cpp
     shadps4/core/libraries/audio3d/*.cpp shadps4/core/vr/*.cpp)
-add_library(wocgpu SHARED ${VIDEO_CORE} ${RECOMPILER} ${COMMON} ${SHIM_SOURCES} ${LAYER_SOURCES} ${GAME_SOURCES} ${CP_SOURCES}
+# Windows: a DLL cannot leave the runtime_* symbols for woc-probe.exe to resolve, so the
+# library is static there and linked into the executable.
+if (WIN32)
+    set(WOCGPU_KIND STATIC)
+else()
+    set(WOCGPU_KIND SHARED)
+endif()
+add_library(wocgpu ${WOCGPU_KIND} ${VIDEO_CORE} ${RECOMPILER} ${COMMON} ${SHIM_SOURCES} ${LAYER_SOURCES} ${GAME_SOURCES} ${CP_SOURCES}
     shadps4/core/libraries/gnmdriver/gnmdriver.cpp
     shadps4/core/libraries/videoout/driver.cpp shadps4/core/libraries/videoout/video_out.cpp
     shadps4/core/libraries/kernel/equeue.cpp ${AVPLAYER}
@@ -163,14 +206,50 @@ set_source_files_properties(shim/wocport_overlay.cpp PROPERTIES
 target_include_directories(wocgpu PRIVATE shim layer games cp shadps4 ${SHADER_INCLUDE} third_party/gcn/include third_party/half/include third_party/renderdoc)
 target_compile_definitions(wocgpu PRIVATE BOOST_ASIO_STANDALONE NDEBUG)
 target_compile_options(wocgpu PRIVATE -Wno-deprecated-declarations -Wno-missing-field-initializers)
-# Loaded with woc-probe at startup (DT_NEEDED, never dlopen): thread_local access without a
-# TLS descriptor call (_dl_tlsdesc_return was ~2% of the draw recording thread).
-target_compile_options(wocgpu PRIVATE -ftls-model=initial-exec)
-# Runtime symbols (runtime_memory_*, runtime_process_*) resolve against woc-probe.
-target_link_options(wocgpu PRIVATE -Wl,--allow-shlib-undefined)
+if (NOT WIN32)
+    # Loaded with woc-probe at startup (DT_NEEDED, never dlopen): thread_local access without a
+    # TLS descriptor call (_dl_tlsdesc_return was ~2% of the draw recording thread).
+    target_compile_options(wocgpu PRIVATE -ftls-model=initial-exec)
+    # Runtime symbols (runtime_memory_*, runtime_process_*) resolve against woc-probe.
+    target_link_options(wocgpu PRIVATE -Wl,--allow-shlib-undefined)
+endif()
 target_link_libraries(wocgpu PRIVATE ffx-vulkan::portable ffx-vulkan::fsr4-v07-vulkan)
 target_link_libraries(wocgpu PUBLIC Vulkan::Headers fmt::fmt Boost::headers magic_enum::magic_enum
-    tsl::robin_map GPUOpen::VulkanMemoryAllocator PkgConfig::XXHASH PkgConfig::SDL3 PkgConfig::X11 PkgConfig::FFMPEG miniz::miniz Zydis::Zydis sirit)
+    tsl::robin_map GPUOpen::VulkanMemoryAllocator PkgConfig::XXHASH PkgConfig::SDL3 PkgConfig::FFMPEG miniz::miniz Zydis::Zydis sirit)
+if (WIN32)
+    # Guest code is entered with the System V ABI; NOMINMAX/WIN32_LEAN_AND_MEAN keep
+    # <windows.h> out of the way of std::min/max and the Vulkan/SDL headers.
+    target_compile_definitions(wocgpu PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(wocgpu PRIVATE -include ${CMAKE_CURRENT_SOURCE_DIR}/shim/woc_win_compat.h)
+    target_include_directories(wocgpu PRIVATE third_party/xbyak)
+    # POSIX headers the Linux-first code includes, over Win32 (compat/win/README.md).
+    target_include_directories(wocgpu PRIVATE ../compat/win/include)
+    target_link_libraries(wocgpu PUBLIC Vulkan::Vulkan ws2_32 bcrypt ntdll synchronization winmm)
+else()
+    target_link_libraries(wocgpu PUBLIC PkgConfig::X11)
+endif()
+
+# Windows: wocgpu is a static library there, so the loader and the HLE runtime are linked here,
+# where CMake knows its dependencies (build.sh builds them with ninja).
+if (WIN32)
+    enable_language(RC)
+    file(GLOB WOC_RUNTIME CONFIGURE_DEPENDS ../src/runtime*.c)
+    file(GLOB WOC_ATRAC9 CONFIGURE_DEPENDS ../third_party/LibAtrac9/C/src/*.c)
+    add_library(atrac9 STATIC ${WOC_ATRAC9})
+    target_compile_options(atrac9 PRIVATE -w)
+    set_target_properties(atrac9 PROPERTIES C_STANDARD 99 INTERPROCEDURAL_OPTIMIZATION OFF)
+    add_executable(woc-probe ../src/probe.c ${WOC_RUNTIME} ../src/compat_win.c ../src/vulkan_smoke.c
+        ../packaging/windows/woc-probe.rc)
+    set_target_properties(woc-probe PROPERTIES C_STANDARD 11 C_EXTENSIONS OFF)
+    target_compile_options(woc-probe PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Werror>)
+    target_include_directories(woc-probe PRIVATE .. ../src ../compat/win/include)
+    target_link_libraries(woc-probe PRIVATE wocgpu atrac9 onecore bcrypt ws2_32 winmm -pthread)
+    # The PS4 range (64 GiB - 1 TiB) must stay free: no high-entropy ASLR for heaps and stacks.
+    # The guest main thread runs on the process stack: 16 MiB, committed (no stack probes).
+    target_link_options(woc-probe PRIVATE -Wl,--disable-high-entropy-va "SHELL:-Xlinker --stack -Xlinker 16777216,16777216")
+    add_executable(woc-gpu-capabilities ../tools/gpu_capabilities.c ../packaging/windows/woc-gpu-capabilities.rc)
+    target_link_libraries(woc-gpu-capabilities PRIVATE Vulkan::Vulkan PkgConfig::SDL3)
+endif()
 
 # Explicit test targets; neither launches the game nor needs a Vulkan device.
 add_executable(motion-history-test EXCLUDE_FROM_ALL ../tests/test_motion_history.cpp)

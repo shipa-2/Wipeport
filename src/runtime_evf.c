@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifndef _WIN32
 #include <pthread.h>
 #include <errno.h>
 #include <time.h>
@@ -58,7 +57,7 @@ static ABI int32_t evf_create(EventFlag **out, const char *name, uint32_t attr, 
     pthread_mutex_init(&f->lock,NULL);
     pthread_condattr_t ca;
     pthread_condattr_init(&ca);
-    pthread_condattr_setclock(&ca,CLOCK_MONOTONIC);
+    pthread_condattr_setclock(&ca,RUNTIME_COND_CLOCK);
     pthread_cond_init(&f->changed,&ca);
     pthread_condattr_destroy(&ca);
     f->bits=pattern;
@@ -142,7 +141,7 @@ static ABI int32_t evf_wait(EventFlag *f, uint64_t bits, uint32_t mode, uint64_t
     const uint64_t start=now_us(), limit=timeout ? *timeout : 0;
     struct timespec end={0};
     if (timeout) {
-        clock_gettime(CLOCK_MONOTONIC,&end);
+        clock_gettime(RUNTIME_COND_CLOCK,&end);
         end.tv_sec+=(time_t)(limit/1000000);
         end.tv_nsec+=(long)(limit%1000000)*1000;
         if (end.tv_nsec>=1000000000) { end.tv_sec++; end.tv_nsec-=1000000000; }
@@ -208,7 +207,3 @@ void runtime_evf_report(void) {
     printf("Runtime: event flags created=%zu, deleted=%zu, waits=%zu, timeouts=%zu\n",created,deleted,waits,timed_out);
     pthread_mutex_unlock(&stats);
 }
-#else
-uintptr_t runtime_evf_resolve(const char *name) { (void)name; return 0; }
-void runtime_evf_report(void) {}
-#endif

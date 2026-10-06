@@ -13,6 +13,9 @@
 #include <execinfo.h>
 #include <unistd.h>
 #include <functional>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #include "wocport_copy.h"
 #include "video_core/renderer_vulkan/vk_gpu_profiler.h"
@@ -35,8 +38,25 @@ namespace {
 thread_local const char* producer_scope_where = nullptr;
 std::atomic<u32> producer_reports{0};
 
-/// Names a thread of this process (its comm).
+/// Names a thread of this process (its comm; its description on Windows).
 std::string ThreadName(u32 tid) {
+#ifdef _WIN32
+    std::string name = "?";
+    if (HANDLE thread = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, tid)) {
+        PWSTR description = nullptr;
+        if (SUCCEEDED(GetThreadDescription(thread, &description)) && description) {
+            char buffer[64];
+            const int n = WideCharToMultiByte(CP_UTF8, 0, description, -1, buffer, sizeof(buffer),
+                                              nullptr, nullptr);
+            if (n > 1) {
+                name.assign(buffer, size_t(n - 1));
+            }
+            LocalFree(description);
+        }
+        CloseHandle(thread);
+    }
+    return name;
+#else
     char path[64];
     std::snprintf(path, sizeof(path), "/proc/self/task/%u/comm", tid);
     std::string name = "?";
@@ -51,6 +71,7 @@ std::string ThreadName(u32 tid) {
         std::fclose(file);
     }
     return name;
+#endif
 }
 
 void ReportProducer(const char* what, u32 other, const char* other_where, const char* where) {
@@ -332,8 +353,12 @@ void Scheduler::TraceDirectRecording(void* caller) {
     }
     std::ranges::sort(top, std::greater{});
     for (size_t i = 0; i < std::min<size_t>(top.size(), 8); ++i) {
+#ifdef _WIN32
+        struct { const char* dli_fname; void* dli_fbase; } info{nullptr, nullptr};
+#else
         Dl_info info{};
         dladdr(top[i].second, &info);
+#endif
         std::printf("Recorder sync caller: %llu x %s+0x%lx\n",
                     static_cast<unsigned long long>(top[i].first),
                     info.dli_fname ? info.dli_fname : "?",
