@@ -159,10 +159,10 @@ FileConfig LoadFileConfig() {
     // degrees an eye) the title is told its headset has. It draws that much into the same
     // picture, and the headset shows it over that much: fewer degrees for the same pixels is
     // a sharper picture, with a border around it where the rest would have been.
-    // SHADPS4_VR_FOV_OF=headset: the percent is of what the host's headset shows (its whole
-    // view at 100), not of a PlayStation VR's.
+    // SHADPS4_VR_FOV_OF=headset (wocport: the default): the percent is of what the host's
+    // headset shows (its whole view at 100); =psvr: of a PlayStation VR's.
     if (const char* of = std::getenv("SHADPS4_VR_FOV_OF"); of != nullptr) {
-        result.config.fov_from_headset = std::string_view{of} == "headset";
+        result.config.fov_from_headset = std::string_view{of} != "psvr";
     }
     if (const char* symmetric = std::getenv("SHADPS4_VR_FOV_SYMMETRIC"); symmetric != nullptr) {
         result.config.fov_symmetric = std::string_view{symmetric} == "1";

@@ -16,8 +16,8 @@ through SteamVR on Linux.
 |---|---|
 | `SHADPS4_VR=1` / `0` | Report a connected PS VR to the game / never. Unset: when the OpenXR runtime already has a headset at start |
 | `SHADPS4_OPENXR=0` | Do not use OpenXR (the launcher's *Show in the headset* off). With `SHADPS4_VR=1` the game runs its VR mode with the left eye in the window only — for testing without touching SteamVR |
-| `SHADPS4_VR_FOV=<percent>` | How much of the PS VR's field of view (100°×103° an eye) the game is told it has; fewer degrees for the same pixels is a sharper picture with a border around it |
-| `SHADPS4_VR_FOV_OF=headset` | The percent is of the headset's own field of view instead |
+| `SHADPS4_VR_FOV=<percent>` | How much of the headset's field of view the game is told it has; fewer degrees for the same pixels is a sharper picture with a border around it |
+| `SHADPS4_VR_FOV_OF=psvr` | Tell the game a PS VR's field of view (100°×103° an eye) instead of the headset's own |
 
 Do not kill the game process (`kill -9`, stopping it in a debugger) while SteamVR shows it:
 SteamVR may crash with it.
@@ -58,6 +58,12 @@ The game positions both eyes from the eye poses the tracker library reports
 put `{"ipd_mm": 63}` in `user/vr.json` (in the user data folder).
 
 ## How frames reach the headset
+
+- The game draws each eye with the field of view it is told (`sceHmdGetFieldOfView`). The port
+  tells it the headset's own, as OpenXR reports it — for a Quest 2 under SteamVR
+  49°/45°/48°/50° (temple, nose, up, down) — and remembers it in `user/vr_headset_fov.json` for
+  the next start. Drawn with a PS VR's instead (`SHADPS4_VR_FOV_OF=psvr`), objects did not line
+  up between the eyes in a Quest 2.
 
 - The game renders both eyes into one texture array: layer 0 is the left eye, layer 1 the right.
   The port copies each layer to its eye's OpenXR swapchain.
