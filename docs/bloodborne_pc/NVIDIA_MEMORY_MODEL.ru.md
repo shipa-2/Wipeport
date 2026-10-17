@@ -2,7 +2,7 @@
 
 Замеры ниже относятся к этапу разработки модуля. Актуальные изменения `0.5-pre2` и результаты
 проверки оригинального copy shader: [CHANGES_0.5-pre2.md](CHANGES_0.5-pre2.md) и
-[TRANSLATION_GPU_COPY_LABELS.ru.md](TRANSLATION_GPU_COPY_LABELS.ru.md).
+[TRANSLATION_GPU_COPY_LABELS.ru.md](../TRANSLATION_GPU_COPY_LABELS.ru.md).
 
 ## Задача
 

@@ -182,7 +182,7 @@ echo "0" > /tmp/woc_toggle
 
 ## Ссылки
 
-- [upscaler.md](upscaler.md) — общая архитектура апскейлера
-- [motion_vectors.md](motion_vectors.md) — векторы движения
+- [upscaler.md](../upscaler.md) — общая архитектура апскейлера
+- [motion_vectors.md](../motion_vectors.md) — векторы движения
 - TAA shader: `gpu/shadps4/video_core/host_shaders/taa.comp`
 - Camera motion: `gpu/shadps4/video_core/host_shaders/camera_motion.comp`

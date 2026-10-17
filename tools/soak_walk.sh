@@ -4,7 +4,7 @@
 cd -- "$(dirname -- "$0")/.."
 secs=${1:?usage: tools/soak_walk.sh SECS [ENV=VALUE...]}
 shift
-env WOC_GAME_DIR="${WOC_GAME_DIR:-$PWD/../game_files/CUSA03173}" "$@" tools/restart.sh > /dev/null || exit 1
+env WOC_GAME_DIR="${WOC_GAME_DIR:-$PWD/../CUSA05670}" "$@" tools/restart.sh > /dev/null || exit 1
 end=$((SECONDS + secs))
 status=alive
 while ((SECONDS < end)); do

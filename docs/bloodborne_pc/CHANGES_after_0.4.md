@@ -2,7 +2,7 @@
 
 Замеры — RX 7800 XT / RADV, Кошмар охотника у лампы (сохранение пользователя), 1080p без лимита
 FPS, новая модель (`WOC_PC_MODEL=1`); «4 ядра» — `CPUS=0-3,8-11` (4 ядра / 8 потоков).
-Подробности и что осталось — [EMULATION_REMOVAL_PLAN.ru.md](EMULATION_REMOVAL_PLAN.ru.md),
+Подробности и что осталось — [EMULATION_REMOVAL_PLAN.ru.md](../EMULATION_REMOVAL_PLAN.ru.md),
 «Шаг 3».
 
 ## Метки EOP/EOS пишет видеочип (новая модель)

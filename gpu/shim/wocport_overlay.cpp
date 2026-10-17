@@ -176,8 +176,8 @@ void Menu() {
     ImGui::SetNextWindowSize(ImVec2(620.0f * base_scale, 0.0f), ImGuiCond_Appearing);
     bool keep_open = true;
     if (!ImGui::Begin(
-            WocSettings::MenuText("Bloodborne - Graphics  (Insert / L3+R3)###wocport_settings",
-                                 "Bloodborne — настройки  (Insert / L3+R3)###wocport_settings"),
+            WocSettings::MenuText("wocport - Graphics  (Insert / L3+R3)###wocport_settings",
+                                 "wocport — настройки  (Insert / L3+R3)###wocport_settings"),
             &keep_open, ImGuiWindowFlags_NoCollapse)) {
         ImGui::End();
         return;

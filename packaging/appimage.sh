@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds dist/Bloodborne-wocport-x86_64.AppImage: the port's current build (run build.sh first),
+# Builds dist/WipEout-wocport-x86_64.AppImage: the port's current build (run build.sh first),
 # its scripts and the launcher, bundled with their Nix closure (nix-appimage: the AppImage mounts
 # its /nix/store with user namespaces, available on SteamOS and most desktops).
 # Running it opens the launcher; `--play` starts the game with the launcher's saved settings.
@@ -34,9 +34,9 @@ trap 'rm -rf "$work"' EXIT
 (cd "$work" && nix bundle --impure --bundler github:ralismark/nix-appimage \
     --expr "import $root/packaging {}")
 mkdir -p dist
-install -m755 "$work/wocport.AppImage" dist/Bloodborne-wocport-x86_64.AppImage
+install -m755 "$work/wocport.AppImage" dist/WipEout-wocport-x86_64.AppImage
 # A GC root for the package: nix-collect-garbage keeps it, and with it the outputs built here from
 # source (the Vulkan-only Mesa, GTK 4 without GStreamer, libadwaita, SDL3), so the next AppImage
 # does not build them again (only a nixpkgs update does).
 nix-build --impure packaging -o out/nix-roots/wocport > /dev/null
-ls -lh dist/Bloodborne-wocport-x86_64.AppImage
+ls -lh dist/WipEout-wocport-x86_64.AppImage

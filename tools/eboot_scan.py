@@ -3,7 +3,7 @@
 
 Usage: eboot_scan.py IMM [IMM...] [--elf out/eboot.elf] [--context N]
 Addresses are eboot virtual addresses (patches use them); the running image has them at
-0x800000000 + (vaddr - 0x400000).
+0x800000000 + vaddr.
 """
 import argparse, struct
 from pathlib import Path

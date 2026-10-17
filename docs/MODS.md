@@ -1,106 +1,75 @@
-# Файловые моды
+# Mods and third-party patches
 
-В лаунчере появилась группа **Моды**: выбор папки, общий переключатель,
-включение каждого мода и стрелки порядка загрузки. Изменения применяются при
-следующем запуске. Нижний включённый мод имеет больший приоритет; при совпадении
-файлов в журнале выводится, какой мод заменил предыдущий.
+## File mods
 
-По умолчанию используется `wocport/mods/`, а в AppImage —
-`~/.local/share/wocport/mods/`. Распакуйте скачанный мод так:
+The launcher's **Mods** group picks the mods folder, switches mods on and off, and orders them;
+changes take effect at the next start. A mod lower in the list wins: when two mods have the same
+file, the log says which one replaced the other.
+
+A WipEout mod is what goes over the game folder: loose files under `data/` (the game looks for a
+file there before its `.psarc` archives), replacement `.psarc` archives, or both. Unpack each mod
+into its own folder:
 
 ```text
 mods/
-  Название мода/
-    dvdroot_ps4/
-      chr/...
-      param/...
-      menu/...
+  My mod/
+    data/...
+    data00.psarc
 ```
 
-Также принимаются:
+Also accepted:
 
-- `Название мода/app0/dvdroot_ps4/...` и `Название мода/CUSA03173/dvdroot_ps4/...`;
-- лишняя папка-обёртка, как после распаковки архива в папку с его именем:
-  `Название мода/Название мода v1.2/dvdroot_ps4/...` (рядом могут лежать readme/картинки);
-- мод без `dvdroot_ps4`, в котором сразу лежат папки игры: `Название мода/chr/...`,
-  `Название мода/parts/...` (`chr`, `parts`, `map`, `menu`, `msg`, `param`, `sfx`,
-  `sound`, `font` и другие папки `dvdroot_ps4`).
+- `My mod/app0/...` and `My mod/CUSA05670/...`;
+- one extra wrapper folder, as after extracting an archive into a folder of its name:
+  `My mod/My mod v1.2/data/...` (readme files and pictures may lie beside it).
 
-Регистр имён в моде не важен: `DVDROOT_PS4/Chr/C0000.chrbnd.dcx` из мода, собранного
-под Windows, заменяет игровой `dvdroot_ps4/chr/c0000.chrbnd.dcx`. Раньше такой файл
-добавлялся рядом под своим именем, и игра его не видела. В журнале запуска видно, сколько
-файлов игры мод заменил и сколько добавил: `Mods: 12 game files replaced, 0 added`.
-Если мод должен заменять файлы, а пишет `0 game files replaced`, проверьте пути внутри мода.
-Архивы ZIP/7z нужно предварительно распаковать. Поддерживаются готовые замены
-файлов `dvdroot_ps4`: текстуры, модели, параметры, интерфейс, звук и шрифты.
-Менеджер не объединяет содержимое двух одинаковых `.dcx`/`.bnd` файлов: последняя
-замена выигрывает целиком.
+File name case does not matter: `DATA00.PSARC` from a mod made on Windows replaces the game's
+`data00.psarc`. The start log tells how many game files a mod replaced and how many it added:
+`Mods: 12 game files replaced, 0 added`. ZIP and 7z archives have to be extracted first. Two mods
+replacing the same archive are not merged: the last one wins whole.
 
-Для уже подготовленной папки shadPS4 работает соседний каталог
-`CUSA03173-mods/dvdroot_ps4/...` рядом с `CUSA03173/`. Он подключается автоматически
-перед модами из списка. Общий переключатель выключает и его. Можно также выбрать
-папку, непосредственно содержащую `dvdroot_ps4`, как папку модов; такая папка
-подключается целиком, без списка отдельных модов.
-Соглашение `-mods` проверено по
-[исходникам shadPS4](https://github.com/shadps4-emu/shadPS4/blob/main/src/core/file_sys/fs.cpp).
+The default mods folder is `mods/` in the data folder (the repository; in the AppImage
+`~/.local/share/wocport/mods/`). A sibling `CUSA05670-mods/` next to the game folder (shadPS4's
+convention) is used too, before the listed mods; the main switch turns it off as well. A folder
+that itself holds `data/` or `.psarc` files can be chosen as the mods folder: it is then used whole.
 
-Оригиналы игры не перезаписываются. На время запуска создаётся отдельное
-объединённое дерево ссылок в каталоге данных `out/mod-game-*`; чтение, stat и
-перечисление каталогов видят выбранные замены и остальные оригинальные файлы.
-Игровые `/app0` и `/hostapp` доступны только для чтения. Сохранения остаются
-в прежней папке и доступны для записи. При обычном завершении или остановке
-лаунчером временное дерево удаляется. После SIGKILL/аварийного отключения оно
-может остаться; такие каталоги не используются в следующем запуске.
+The game folder is never written. For each start a view of the game is built from links in
+`out/mod-game-*`: reads, `stat` and directory listings see the mods' files and the game's
+others. `/app0` is read-only; saves stay where they are. The view is removed when the game exits
+or the launcher stops it; one left after a crash is not reused.
 
-Моды с заменой `eboot.bin`, `sce_module` или `sce_sys`, инжекторы DLL и скриптовые
-плагины этим загрузчиком не поддерживаются. Патчи исполняемого кода остаются
-в существующей системе `patches/` / `WOC_PATCHES`. Символьные ссылки внутри мода
-не принимаются. Совместимость конкретного мода с CUSA03173 1.09 определяется
-его автором.
+Not supported: replacing `eboot.bin`, `sce_module` or `sce_sys`, and links inside a mod. Code
+patches go through the patch system below.
 
-Для запуска из терминала:
+From a terminal:
 
-```sh
-WOC_GAME_DIR=/path/to/CUSA03173 WOC_MODS_DIR=/path/to/mods bash run.sh
-WOC_GAME_DIR=/path/to/CUSA03173 WOC_MODS_ENABLED=0 bash run.sh
+```bash
+WOC_GAME_DIR=/path/to/CUSA05670 WOC_MODS_DIR=/path/to/mods bash run.sh
+WOC_GAME_DIR=/path/to/CUSA05670 WOC_MODS_ENABLED=0 bash run.sh
 ```
 
-Порядок и отключения сохраняются в каталоге данных `mods.json`:
+The order and the disabled mods are kept in `mods.json` in the data folder:
 
 ```json
-{"order": ["Первый", "Второй"], "disabled": ["Первый"]}
+{"order": ["First", "Second"], "disabled": ["First"]}
 ```
 
-Новые папки включаются автоматически и добавляются в конец по алфавиту.
-`WOC_MODS_CONFIG` меняет путь профиля. `WOC_MOD_TRACE=1` с `WOC_MODS_DIR` выводит
-первые чтения реально подключённых файлов для диагностики.
+New folders are enabled and appended in alphabetical order. `WOC_MODS_CONFIG` sets another path;
+`WOC_MOD_TRACE=1` logs the first reads of files that come from mods.
 
-# Сторонние патчи (XML shadPS4)
+## Third-party patches (shadPS4 XML)
 
-Папка `patches/` в каталоге данных (в AppImage — `~/.local/share/wocport/patches/`, в лаунчере
-группа **Сторонние патчи**, там же можно выбрать другую папку). Подходят XML-файлы патчей в
-формате shadPS4/GoldHEN: берутся `Metadata` для `AppVer="01.09"` и `eboot.bin`, файлы с
-`TitleID` других игр пропускаются. Включение по умолчанию — из `isEnabled` файла, выбор в
-лаунчере сохраняется в `patches.json` каталога данных:
+The `patches/` folder in the data folder (launcher: **Third-party patches**, where another folder
+can be chosen). shadPS4/GoldHEN XML patch files fit: the port takes the `Metadata` for
+`AppVer="01.07"` and `eboot.bin`, and skips files whose `TitleID` is another game's. Whether a
+patch is on comes from the file's `isEnabled`; the launcher's choice is kept in `patches.json`:
 
 ```json
-{"enabled": ["файл.xml/Имя патча"], "disabled": ["файл.xml/Другой патч"]}
+{"enabled": ["file.xml/Patch name"], "disabled": ["file.xml/Other patch"]}
 ```
 
-Поддерживаются строки `bytes`, `bytes16/32/64`, `float32/64`, `utf8`, `utf16`.
-Патч со строками `mask` (поиск по шаблону) или с адресом вне eboot пропускается целиком,
-с сообщением в журнале. Сторонние патчи применяются после встроенных
-(`patches/Bloodborne.xml`): при пересечении побеждает сторонний. Из терминала:
-`WOC_PATCHES_DIR=/путь WOC_PATCHES_CONFIG=/путь/patches.json bash run.sh`.
-
-Патчи, которые заменяют указатели в таблицах (как `60 FPS++` и `90 FPS++`), загрузчик
-переносит на реальный адрес образа. Раньше такие патчи останавливали запуск ошибкой
-`patch overlaps a relocation`.
-
-# Резкость TAA
-
-Настройки `sharpen` и `sharpness` теперь работают также для TAA, в лаунчере и
-меню игры. Диапазон — **0…1**; при 0 или выключенном переключателе дополнительного
-прохода нет. RCAS применяется к готовой сцене перед HUD. В историю TAA сохраняется
-цвет до повышения резкости, чтобы она не усиливалась при повторном накоплении.
-Ровные участки сохраняют исходный цвет, включая HDR; дополнительный буфер не нужен.
+Supported lines: `bytes`, `bytes16/32/64`, `float32/64`, `utf8`, `utf16`. A patch with `mask`
+lines (pattern search) or an address outside the eboot is skipped whole, with a message in the
+log. Third-party patches are applied after the built-in ones ([GAME_CODE.md](GAME_CODE.md)): where
+they overlap, the third-party patch wins. Addresses are PS4 addresses (eboot base `0x400000`).
+From a terminal: `WOC_PATCHES_DIR=/path WOC_PATCHES_CONFIG=/path/patches.json bash run.sh`.

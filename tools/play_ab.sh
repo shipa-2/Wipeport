@@ -13,6 +13,6 @@ env_args+=("$@")
 base=out/ab_${mode}_$(date +%m%d_%H%M%S)
 echo "Log: $base.log"
 env WOC_FRAME_LOG="$PWD/$base.frames.csv" WOC_FRAME_STATS=1 \
-    WOC_GAME_DIR="${WOC_GAME_DIR:-$PWD/../game_files/CUSA03173}" "${env_args[@]}" \
+    WOC_GAME_DIR="${WOC_GAME_DIR:-$PWD/../CUSA05670}" "${env_args[@]}" \
     bash run.sh > "$base.log" 2>&1
 echo "Done: $base.log"
