@@ -24,6 +24,14 @@ Flat render resolution (render_res=WxH). The game sizes its scene from the displ
 Flat frame rate (fps_limit=N). The game runs at whatever rate the display flips at (its
   logic follows the frame time); the port's frame limiter (WOC_FPS_LIMIT) caps it.
 
+Game memory pool (game_pool_mb). The game carves its GPU memory (Garlic) out of one direct
+  memory allocation whose size comes from a table at 0x86bb60: 4224 MiB on a PS4, 4736 MiB on a
+  PS4 Pro (the table after it, picked at 0x6431aa by sceKernelIsNeoMode). Larger VR eyes and render
+  targets than a PS4's ran it out on heavier tracks: its allocator returned NULL and the game
+  crashed clearing the buffer (0x742694). The pool is 5248 MiB by default; the system reports
+  WOC_DMEM_MB=6144 MiB of direct memory so that it fits (the game takes 256 MiB more before it
+  and about 200 MiB after).
+
 VR frame rate (vr_fps). The game's tracker control thread (VRTrackerCntrTh) lets the render
   thread go on after a number of headset flips (the reprojection flips at 120 Hz) read from the
   tracker settings at 0x658e14 (2: 60 FPS). The patch loads a constant instead: 1 = 120 FPS.
@@ -35,7 +43,12 @@ VR_SCALE_TABLE = (0x86ED00, bytes.fromhex('3333b33f0000c03f'))  # 1.4f (PS4), 1.
 VR_DYNRES_BRANCH = (0x64B3C1, bytes.fromhex('7f02'))           # jg: keep the measured level
 VR_FLIP_INTERVAL = (0x658E14, bytes.fromhex('448a3579a1bb00'))  # mov r14b, [tracker settings]
 
+GAME_POOL = (0x86BB60, struct.pack('<Q', 0x108000000))     # Garlic pool size of a PS4 (bytes)
+
 VR_FPS = {'60': 2, '120': 1}
+GAME_POOL_MB = '5248'
+# Direct memory before and after the pool, and some to spare (MiB).
+POOL_MARGIN_MB = 896
 
 
 def _site(eboot, segments, site, data):
@@ -61,8 +74,18 @@ def settings_from(settings, env):
         'vr_scale': get('vr_scale', 'WOC_VR_SCALE', ''),
         'vr_dynres': get('vr_dynres', 'WOC_VR_DYNRES', '1'),
         'vr_fps': get('vr_fps', 'WOC_VR_FPS', '60'),
+        'game_pool_mb': get('game_pool_mb', 'WOC_GAME_POOL_MB', GAME_POOL_MB),
         'raw': env.get('WOC_WIPEOUT_RAW', ''),
     }
+
+
+def pool_mb(options):
+    """The game's Garlic pool in MiB (game_pool_mb; 4224 is a PS4's, nothing changed)."""
+    value = options.get('game_pool_mb') or GAME_POOL_MB
+    pool = int(value)
+    if not 4224 <= pool <= 12288 or pool % 2:
+        raise ValueError('game_pool_mb: an even number of MiB from 4224 to 12288')
+    return pool
 
 
 def writes(eboot, segments, options):
@@ -85,6 +108,10 @@ def writes(eboot, segments, options):
         code = bytes([0x41, 0xB6, VR_FPS[fps]]) + b'\x0f\x1f\x40\x00'
         out.append(_site(eboot, segments, VR_FLIP_INTERVAL, code))
         notes.append(f'VR {fps} FPS')
+    pool = pool_mb(options)
+    if pool != 4224:
+        out.append(_site(eboot, segments, GAME_POOL, struct.pack('<Q', pool << 20)))
+        notes.append(f'game memory pool {pool} MiB')
     # WOC_WIPEOUT_RAW=ADDR:OLDHEX:NEWHEX[,...]: experiments on the game's code.
     for item in filter(None, options.get('raw', '').split(',')):
         address, old, new = item.split(':')
@@ -106,4 +133,8 @@ def environment(settings, env):
     fps = settings.get('fps_limit', '').strip()
     if fps and 'WOC_FPS_LIMIT' not in env:
         out.append(f'WOC_FPS_LIMIT={int(fps)}')
+    # Direct memory for the game's pool (the runtime's floor is a PS4's 5056 MiB).
+    pool = pool_mb(settings_from(settings, env))
+    if pool != 4224 and 'WOC_DMEM_MB' not in env:
+        out.append(f'WOC_DMEM_MB={pool + POOL_MARGIN_MB}')
     return out

@@ -4,7 +4,7 @@ import unittest
 
 import wipeout_patches as wp
 
-SITES = (wp.VR_SCALE_TABLE, wp.VR_DYNRES_BRANCH, wp.VR_FLIP_INTERVAL)
+SITES = (wp.VR_SCALE_TABLE, wp.VR_DYNRES_BRANCH, wp.VR_FLIP_INTERVAL, wp.GAME_POOL)
 
 
 def fake_eboot():
@@ -18,11 +18,20 @@ def fake_eboot():
 
 class WipeoutPatches(unittest.TestCase):
     def options(self, **values):
-        return {'vr_scale': '', 'vr_dynres': '1', 'vr_fps': '60', **values}
+        return {'vr_scale': '', 'vr_dynres': '1', 'vr_fps': '60', 'game_pool_mb': '4224', **values}
 
-    def test_defaults_change_nothing(self):
+    def test_ps4_values_change_nothing(self):
         eboot, segments = fake_eboot()
         self.assertEqual(wp.writes(eboot, segments, self.options()), ([], []))
+
+    def test_game_pool(self):
+        eboot, segments = fake_eboot()
+        out, notes = wp.writes(eboot, segments, self.options(game_pool_mb=''))
+        self.assertEqual(dict(out)[wp.GAME_POOL[0]], (5248 << 20).to_bytes(8, 'little'))
+        self.assertIn('game memory pool 5248 MiB', notes)
+        for bad in ('4000', '5249', '99999'):
+            with self.assertRaises(ValueError):
+                wp.writes(eboot, segments, self.options(game_pool_mb=bad))
 
     def test_vr_options(self):
         eboot, segments = fake_eboot()
@@ -52,10 +61,12 @@ class WipeoutPatches(unittest.TestCase):
         settings = {'vr_fps': '120', 'render_res': '2560x1440', 'fps_limit': '144'}
         self.assertEqual(wp.settings_from(settings, {'WOC_VR_FPS': '60'})['vr_fps'], '60')
         self.assertEqual(wp.environment(settings, {}),
-                         ['WOC_INTERNAL_WIDTH=2560', 'WOC_INTERNAL_HEIGHT=1440', 'WOC_FPS_LIMIT=144'])
+                         ['WOC_INTERNAL_WIDTH=2560', 'WOC_INTERNAL_HEIGHT=1440', 'WOC_FPS_LIMIT=144',
+                          'WOC_DMEM_MB=6144'])
         # Explicit environment variables win over wocport.ini.
-        self.assertEqual(wp.environment(settings, {'WOC_INTERNAL_WIDTH': '1920', 'WOC_FPS_LIMIT': '0'}),
-                         [])
+        self.assertEqual(wp.environment(settings, {'WOC_INTERNAL_WIDTH': '1920', 'WOC_FPS_LIMIT': '0',
+                                                   'WOC_DMEM_MB': '8192'}), [])
+        self.assertEqual(wp.environment({'game_pool_mb': '4224'}, {}), [])
 
 
 if __name__ == '__main__':

@@ -37,6 +37,16 @@ tracker settings at `0x658e14` (`mov r14b, [rip+…]`, 2 = 60 FPS). The patch lo
 instead (`mov r14b, 1` and a 4-byte `nop`): one flip per frame, 120 FPS. The game's simulation
 follows its timer, so the game speed stays right at 120 FPS (checked).
 
+## Game memory pool — `game_pool_mb`
+
+The game carves its GPU memory (Garlic) out of one direct memory allocation whose size comes from
+a table at `0x86bb60`: 4224 MiB on a PS4, 4736 MiB on a PS4 Pro (the next table, chosen at
+`0x6431aa` by `sceKernelIsNeoMode`). Larger VR eyes and render targets than a PS4's ran it out on
+heavier tracks: its allocator returned NULL and the game crashed clearing that buffer
+(`0x742694`). The pool is 5248 MiB by default (`game_pool_mb`, `WOC_GAME_POOL_MB`; 4224 leaves the
+game as it is), and the port reports 896 MiB more direct memory than the pool
+(`WOC_DMEM_MB`, 6144 MiB) so that it and the game's other allocations fit.
+
 ## Flat render resolution — `render_res`
 
 The game sizes its scene from the display size the system reports
