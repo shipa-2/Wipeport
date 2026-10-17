@@ -59,6 +59,16 @@ if [[ -z ${PYTHON:-} ]]; then echo 'Install Python 3 or set PYTHON.' >&2; exit 1
 # WOC_GAME_DIR: the game's folder (eboot.bin, sce_module, ...); default next to this directory.
 game=${WOC_GAME_DIR:-../CUSA05670}
 if [[ ! -f $game/eboot.bin ]]; then echo "No eboot.bin in $game (set WOC_GAME_DIR)." >&2; exit 1; fi
+# Mods (data/ files, .psarc archives; scripts/mods.py): a merged view of the game folder made of
+# links, for this launch. Only our own view is removed afterwards.
+original_game=$game
+game=$("$PYTHON" scripts/mods.py "$game" --out "$out" \
+    --mods-dir "${WOC_MODS_DIR:-$data/mods}" --config "${WOC_MODS_CONFIG:-$data/mods.json}" \
+    --enabled "${WOC_MODS_ENABLED:-1}")
+if [[ $game != "$(realpath "$original_game")" ]]; then
+    mod_game=$game
+    trap '"$PYTHON" -c '\''import shutil,sys; shutil.rmtree(sys.argv[1])'\'' "$mod_game"' EXIT
+fi
 "$PYTHON" scripts/prepare.py "$game" --out "$out"
 "$PYTHON" scripts/link_libc.py "$game" --out "$out"
 "$PYTHON" scripts/link_modules.py "$game" --out "$out"
@@ -161,4 +171,14 @@ else
     probe=${WOC_PROBE:-out/woc-probe}  # WOC_PROBE: a wrapper (gdb) around it
 fi
 probe_args=("$out/boot-linked.bin" --content-profile "$out/content.bin" --patches "$out/patches.bin" --app0 "$game" --user "${WOC_USER_DIR:-$data/user}" --timeout "${WOC_TIMEOUT:-0}" "$@")
+if [[ -n ${mod_game:-} ]]; then
+    "$probe" "${probe_args[@]}" &
+    mod_pid=$!
+    trap 'kill -TERM "$mod_pid" 2>/dev/null || true' TERM INT
+    mod_status=0
+    wait "$mod_pid" || mod_status=$?
+    # An interrupted wait must finish the child before removing its mounted view.
+    if kill -0 "$mod_pid" 2>/dev/null; then wait "$mod_pid" || mod_status=$?; fi
+    exit "$mod_status"
+fi
 exec "$probe" "${probe_args[@]}"

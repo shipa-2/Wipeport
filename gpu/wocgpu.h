@@ -30,13 +30,6 @@ int wocgpu_text_input_begin(const char *initial_utf8, const char *prompt_utf8);
 int wocgpu_text_input_poll(char *out_utf8, uint64_t size);
 /* 1 while the in-game settings menu is open: the game's pad input is held neutral. */
 int wocgpu_overlay_captures_input(void);
-/* Mouse look (runtime_pad.c): the window takes the mouse when it is clicked (relative mode) and
- * lets it go on F1, losing focus or the menu opening. take: motion (pixels) and wheel notches
- * since the last call, reset; captured: 1 while the window holds it; enable: mouse_look=0 in
- * wocport.ini keeps the window from taking it. */
-void wocgpu_mouse_take(double *dx, double *dy, int *wheel_up, int *wheel_down);
-int wocgpu_mouse_captured(void);
-void wocgpu_mouse_look_enable(int enabled);
 /* Number of symbols registered by the vendored libraries (diagnostics). */
 unsigned wocgpu_symbol_count(void);
 #ifdef __cplusplus

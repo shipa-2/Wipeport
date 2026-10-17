@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name=Bloodborne
-Comment=Native Bloodborne port launcher
+Name=WipEout Omega Collection
+Comment=Native WipEout Omega Collection port launcher
 Exec=@LAUNCHER@
 Icon=applications-games
 Categories=Game;

@@ -5,10 +5,7 @@
  *   WASD left stick, arrow keys right stick, Space Cross, LShift Circle,
  *   E Square, Q Triangle, 1 L1, 3 R1, R L2, F R2, Z L3, C R3,
  *   Enter Options, Tab left touchpad, Backspace right touchpad,
- *   IJKL d-pad (I up, K down, J left, L right).
- *   Mouse (once the game window is clicked; F1 or leaving the window releases it): look (the
- *   right stick), Left R1, Right L2, Middle R3, side buttons R2 (X1) and L1 (X2), wheel the
- *   d-pad's up/down (quick items).
+ *   IJKL d-pad (I up, K down, J left, L right). The mouse is not game input.
  *
  * Stick neutral: SDL exposes no way to read a pad's calibration and some clones report a
  * biased neutral (a Switch-style pad was seen returning both sticks at a constant ~ +/-16380).
@@ -273,15 +270,6 @@ static const uint32_t input_buttons[IN_COUNT]={
     BTN_OPTIONS,BTN_TOUCHPAD,0,BTN_UP,BTN_DOWN,BTN_LEFT,BTN_RIGHT,
 };
 #define MAX_BIND 4
-/* Mouse buttons and the wheel in key.<input> lines ("Mouse Left", "Wheel Down", ...): codes past
- * SDL's scancodes. They count only while the window holds the mouse for looking (gpu/shim
- * window.cpp): a click that takes the mouse is not an attack. */
-enum { MOUSE_KEY=SDL_SCANCODE_COUNT, MOUSE_WHEEL_UP=MOUSE_KEY+SDL_BUTTON_X2+1, MOUSE_WHEEL_DOWN };
-static const struct { const char *name; int code; } mouse_keys[]={
-    {"Mouse Left",MOUSE_KEY+SDL_BUTTON_LEFT}, {"Mouse Right",MOUSE_KEY+SDL_BUTTON_RIGHT},
-    {"Mouse Middle",MOUSE_KEY+SDL_BUTTON_MIDDLE}, {"Mouse X1",MOUSE_KEY+SDL_BUTTON_X1},
-    {"Mouse X2",MOUSE_KEY+SDL_BUTTON_X2}, {"Wheel Up",MOUSE_WHEEL_UP}, {"Wheel Down",MOUSE_WHEEL_DOWN},
-};
 enum { PAD_LEFT_TRIGGER=SDL_GAMEPAD_BUTTON_COUNT, PAD_RIGHT_TRIGGER }; /* triggers as buttons */
 typedef struct { int key_count, pad_count; int keys[MAX_BIND]; int pad[MAX_BIND]; } Binding;
 static Binding bindings[IN_COUNT];
@@ -298,9 +286,6 @@ static void bind_defaults(void) {
         {IN_MOVE_UP,SDL_SCANCODE_W}, {IN_MOVE_DOWN,SDL_SCANCODE_S}, {IN_MOVE_LEFT,SDL_SCANCODE_A},
         {IN_MOVE_RIGHT,SDL_SCANCODE_D}, {IN_LOOK_UP,SDL_SCANCODE_UP}, {IN_LOOK_DOWN,SDL_SCANCODE_DOWN},
         {IN_LOOK_LEFT,SDL_SCANCODE_LEFT}, {IN_LOOK_RIGHT,SDL_SCANCODE_RIGHT},
-        {IN_R1,MOUSE_KEY+SDL_BUTTON_LEFT}, {IN_L2,MOUSE_KEY+SDL_BUTTON_RIGHT},
-        {IN_R3,MOUSE_KEY+SDL_BUTTON_MIDDLE}, {IN_R2,MOUSE_KEY+SDL_BUTTON_X1}, {IN_L1,MOUSE_KEY+SDL_BUTTON_X2},
-        {IN_UP,MOUSE_WHEEL_UP}, {IN_DOWN,MOUSE_WHEEL_DOWN},
     };
     static const struct { int input, button; } pads[]={
         {IN_CROSS,SDL_GAMEPAD_BUTTON_SOUTH}, {IN_CIRCLE,SDL_GAMEPAD_BUTTON_EAST},
@@ -328,19 +313,12 @@ static int pad_button_from_name(const char *name) {
     return b==SDL_GAMEPAD_BUTTON_INVALID ? -1 : (int)b;
 }
 static int key_from_name(const char *name) {
-    for (size_t i=0;i<sizeof(mouse_keys)/sizeof(*mouse_keys);++i)
-        if (!SDL_strcasecmp(name,mouse_keys[i].name)) return mouse_keys[i].code;
     const SDL_Scancode s=SDL_GetScancodeFromName(name);
     return s==SDL_SCANCODE_UNKNOWN ? -1 : (int)s;
 }
-/* Mouse look (wocport.ini): mouse_look=0 leaves the mouse alone; mouse_sensitivity (default 1:
- * ~1000 pixels/s turn the camera at full speed), mouse_invert_y=1. */
-static int mouse_look=1, mouse_invert_y;
-static float mouse_sensitivity=1.0f;
 /* key.<input>= / pad.<input>= lines of the settings file. */
 static void load_bindings(void) {
     bind_defaults();
-    mouse_look=1; mouse_invert_y=0; mouse_sensitivity=1.0f;
     const char *path=getenv("WOC_CONFIG");
     FILE *f=path ? fopen(path,"r") : NULL;
     if (!f) return;
@@ -348,16 +326,6 @@ static void load_bindings(void) {
     while (fgets(line,sizeof line,f)) {
         const int keyboard=!strncmp(line,"key.",4), pad=!strncmp(line,"pad.",4);
         char *eq=strchr(line,'=');
-        if (eq && !keyboard && !pad) {
-            const char *value=eq+1;
-            if (!strncmp(line,"mouse_look=",11)) mouse_look=atoi(value)!=0;
-            else if (!strncmp(line,"mouse_invert_y=",15)) mouse_invert_y=atoi(value)!=0;
-            else if (!strncmp(line,"mouse_sensitivity=",18)) {
-                const float v=strtof(value,NULL);
-                if (v>=0.05f && v<=20.0f) mouse_sensitivity=v;
-            }
-            continue;
-        }
         if ((!keyboard && !pad) || !eq) continue;
         *eq=0;
         int input=-1;
@@ -382,30 +350,10 @@ static void load_bindings(void) {
     }
     fclose(f);
 }
-/* The mouse while the window holds it: buttons, and the wheel as short presses (one per notch,
- * each held and released for a few frames so the game sees it). */
-static SDL_MouseButtonFlags mouse_buttons;
-static int wheel_pending[2], wheel_phase[2]; /* [up, down]; phase: 0 idle, else press/release */
-static uint64_t wheel_until[2];
-static void mouse_wheel_step(uint64_t now, int up, int down) {
-    wheel_pending[0]+=up; wheel_pending[1]+=down;
-    for (int i=0;i<2;++i) {
-        if (wheel_pending[i]>8) wheel_pending[i]=8;
-        if (wheel_phase[i] && now<wheel_until[i]) continue;
-        if (wheel_phase[i]==1) { wheel_phase[i]=2; wheel_until[i]=now+60000; } /* released */
-        else if (wheel_pending[i]>0) { --wheel_pending[i]; wheel_phase[i]=1; wheel_until[i]=now+60000; }
-        else wheel_phase[i]=0;
-    }
-}
-static int mouse_key_down(int code) {
-    if (code==MOUSE_WHEEL_UP) return wheel_phase[0]==1;
-    if (code==MOUSE_WHEEL_DOWN) return wheel_phase[1]==1;
-    return (mouse_buttons & SDL_BUTTON_MASK(code-MOUSE_KEY))!=0;
-}
 static int key_down(const bool *k, int input) {
     for (int i=0;i<bindings[input].key_count;++i) {
         const int code=bindings[input].keys[i];
-        if (code>=MOUSE_KEY ? mouse_key_down(code) : k && k[code]) return 1;
+        if (k && k[code]) return 1;
     }
     return 0;
 }
@@ -439,42 +387,6 @@ static void apply_keyboard(PadData *d, const bool *k) {
     d->right_y=key_axis(d->right_y,key_down(k,IN_LOOK_UP),key_down(k,IN_LOOK_DOWN));
 }
 
-/* Mouse look: the game turns its camera at a rate set by the right stick, so the stick follows
- * the mouse's speed. Each sample adds the motion since the last one and the sum decays over
- * LOOK_TAU (linearly per sample: the level a steady speed holds, speed * gain * LOOK_TAU, is the
- * same at any frame rate). ~1000 pixels/s reach full deflection at sensitivity 1. The game ignores
- * small deflections, so a moving mouse starts past them (WOC_MOUSE_DEADZONE, default 16 of 127):
- * slow aiming still turns the camera. While the mouse moves it replaces the right stick. */
-#define LOOK_TAU_US 60000.0f
-static float look_x, look_y;
-static uint64_t look_last_us;
-static uint8_t look_axis(float value, uint8_t stick, int deadzone) {
-    if (value>-0.5f && value<0.5f) return stick;
-    const float magnitude=value<0 ? -value : value;
-    const float out=deadzone+magnitude*(127-deadzone)/127.0f;
-    const int v=128+(int)(value<0 ? -out : out);
-    return (uint8_t)(v<0 ? 0 : v>255 ? 255 : v);
-}
-static void apply_mouse_look(PadData *d, double dx, double dy, uint64_t now, int captured) {
-    float dt=look_last_us && now>look_last_us ? (float)(now-look_last_us) : 0.0f;
-    look_last_us=now;
-    if (!captured) { look_x=look_y=0; return; }
-    if (dt>LOOK_TAU_US) dt=LOOK_TAU_US;
-    static int deadzone=-1;
-    if (deadzone<0) {
-        const char *env=getenv("WOC_MOUSE_DEADZONE");
-        deadzone=env && *env ? atoi(env) : 16;
-        if (deadzone<0 || deadzone>100) deadzone=16;
-    }
-    const float gain=127.0f/(1000.0f*LOOK_TAU_US/1e6f)*mouse_sensitivity, decay=1.0f-dt/LOOK_TAU_US;
-    look_x=look_x*decay+(float)dx*gain;
-    look_y=look_y*decay+(float)(mouse_invert_y ? -dy : dy)*gain;
-    look_x=look_x<-127 ? -127 : look_x>127 ? 127 : look_x;
-    look_y=look_y<-127 ? -127 : look_y>127 ? 127 : look_y;
-    d->right_x=look_axis(look_x,d->right_x,deadzone);
-    d->right_y=look_axis(look_y,d->right_y,deadzone);
-}
-
 static void sample_host(PadData *d) {
     memset(d,0,sizeof(*d));
     d->left_x=d->left_y=d->right_x=d->right_y=128;
@@ -482,17 +394,9 @@ static void sample_host(PadData *d) {
     d->connected=1; d->connected_count=connected_count ? connected_count : 1;
     d->timestamp=now_us();
     SDL_Gamepad *g=current_gamepad();
-    if (!bindings_ready) { load_bindings(); bindings_ready=1; wocgpu_mouse_look_enable(mouse_look); }
-    /* The mouse's motion and wheel since the last sample (always taken: none of it piles up while
-     * the menu is open); it counts while the window holds the mouse. */
-    double mouse_dx=0, mouse_dy=0;
-    int wheel_up=0, wheel_down=0;
-    wocgpu_mouse_take(&mouse_dx,&mouse_dy,&wheel_up,&wheel_down);
-    const int captured=wocgpu_mouse_captured();
-    if (wocgpu_overlay_captures_input()) { apply_mouse_look(d,0,0,d->timestamp,0); return; } /* menu open: neutral input */
+    if (!bindings_ready) { load_bindings(); bindings_ready=1; }
+    if (wocgpu_overlay_captures_input()) return; /* menu open: neutral input */
     const bool *k=SDL_WasInit(SDL_INIT_VIDEO) ? SDL_GetKeyboardState(NULL) : NULL;
-    mouse_buttons=captured && SDL_WasInit(SDL_INIT_VIDEO) ? SDL_GetMouseState(NULL,NULL) : 0;
-    mouse_wheel_step(d->timestamp,captured ? wheel_up : 0,captured ? wheel_down : 0);
     if (g) {
         int touch_right=0;
         for (int i=IN_CROSS;i<=IN_RIGHT;++i) {
@@ -526,8 +430,7 @@ static void sample_host(PadData *d) {
         if ((d->buttons & BTN_TOUCHPAD) && !d->touch_count) touch_click(d,0);
         if (touch_right) touch_click(d,1);
     }
-    apply_keyboard(d,k); /* the bound mouse buttons too */
-    apply_mouse_look(d,mouse_dx,mouse_dy,d->timestamp,captured);
+    apply_keyboard(d,k);
 }
 
 /* WOC_PAD_FILE=<file>: scripted input for automated runs. The file holds whitespace-separated

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Bloodborne launcher for the native port (GTK4 / libadwaita).
+"""WipEout Omega Collection launcher for the native port (GTK4 / libadwaita).
 
-Picks the game folder, edits the port's settings (wocport.ini: upscaler, preset, ...) and the
+Picks the game folder, edits the port's settings (wocport.ini: VR, resolution, upscaler, ...) and the
 start-up tweaks passed as environment variables to run.sh, starts and stops the game and shows
 its output. Launcher settings live in ~/.config/wocport-launcher/settings.json.
 Russian, English, Brazilian Portuguese and Simplified Chinese (wocport_i18n: the Russian
@@ -32,7 +32,7 @@ PORT_DIR = Path(__file__).resolve().parent.parent  # native_probe (or the packag
 sys.path.insert(0, str(PORT_DIR / 'scripts'))
 from mods import discover as discover_mods  # noqa: E402
 import game_check  # noqa: E402
-import online  # noqa: E402  (the online module: addresses and the connection test)
+import games  # noqa: E402
 from patches import external_patches  # noqa: E402
 # Packaged (AppImage): generated files, saves and wocport.ini live in WOC_DATA_DIR.
 PACKAGED = bool(os.environ.get("WOC_PREBUILT"))
@@ -86,23 +86,15 @@ UPSCALERS = [("FSR 4", "fsr4"), ("FSR 4.1.1", "fsr411"), ("FSR 3", "fsr3"),
 PRESETS = [("Native AA", 0), ("Quality (x1.5)", 1), ("Balanced (x1.7)", 2),
            ("Performance (x2)", 3), ("Ultra Performance (x3)", 4)]
 OUTPUT_RES = [("1280×720 (Steam Deck)", "1280x720"), ("1920×1080", "1920x1080"), ("2560×1440", "2560x1440"), ("3840×2160", "3840x2160")]
-# Game effects (patches applied at start): wocport.ini key, title, default.
-EFFECTS = [
-    ("effect_chromatic_aberration", "Хроматическая аберрация", True),
-    ("effect_dof", "Глубина резкости (DoF)", True),
-    ("effect_motion_blur", "Размытие в движении", True),
-    ("effect_ssao", "Затенение SSAO", True),
-    ("effect_game_aa", "Собственное сглаживание игры", True),
-    ("effect_dynamic_shadows", "Тени от динамических источников", True),
-    ("effect_ssr", "Отражения SSR (не было в игре)", False),
-    ("skip_intro", "Пропуск заставок при запуске", False),
-    ("debug_camera", "Свободная камера (Cross + L3 / Space + Z)", False),
-    ("debug_menu", "Debug menu (левый touchpad / Tab; нужны шрифты)", False),
-]
-MODEL_LOD = [("Как в игре", "0"), ("Максимальная (-2)", "-2"), ("Ниже (1)", "1"),
-             ("Минимальная (2)", "2")]
-FPS_MODES = [("Без ограничения (патч)", "uncap"), ("60", "60"), ("90", "90"),
-             ("30 (как на PS4)", "30")]
+# Flat render resolution (wocport.ini render_res): the display size the port reports to the game,
+# which renders its scene at that size (scripts/wipeout_patches.py); the window shows it scaled.
+RENDER_RES = [("1920×1080 (как на PS4)", ""), ("2560×1440", "2560x1440"), ("3200×1800", "3200x1800"),
+              ("3832×2156 (больше всего без шахматки)", "3832x2156"),
+              ("3840×2160 (4K-режим игры, шахматный рендер)", "3840x2160")]
+# PS VR through SteamVR (the VR page): when the game sees a headset (SHADPS4_VR).
+VR_MODES = [("Авто: если SteamVR видит шлем", "auto"), ("Всегда (VR-режим игры)", "on"),
+            ("Выключен (обычный экран)", "off")]
+VR_FPS = [("60 (как на PS4, SteamVR дорисовывает до 120)", "60"), ("120", "120")]
 PRESENT_MODES = [("Mailbox", "Mailbox"), ("FIFO (VSync)", "Fifo"),
                  ("FIFO Relaxed", "FifoRelaxed"), ("Immediate", "Immediate")]
 # A third element is a note shown under the row's title while that choice is selected: the
@@ -119,7 +111,7 @@ PREUPLOAD = [("Обычная", "", "Без лишней видеопамяти"
 
 DEFAULTS = {
     "ui_language": "",
-    "game_dir": "" if PACKAGED else str(PORT_DIR.parent / "CUSA03173"),
+    "game_dir": "" if PACKAGED else str(PORT_DIR.parent / "CUSA05670"),
     "user_dir": "",
     "mods_dir": "",
     "mods_enabled": True,
@@ -131,8 +123,6 @@ DEFAULTS = {
     "gamepad": "",
     "gamepad_name": "",
     "display": "",
-    "skip_network_choice": True,
-    "fps_mode": "uncap",
     "fps_limit": 0,
     "draw_pipe": "",
     "readbacks": "",
@@ -146,15 +136,8 @@ DEFAULTS = {
     "gpu_profile": False,
     "vk_validation": False,
     "extra_env": "",
-    # Online play (Online page, the online module gpu/wocnet): off by default; shadPS4's public
-    # shadNet server and The Hunter's Dream.
-    "online": False,
-    "online_community": online.COMMUNITY_SERVER,
-    "online_server": online.SHADNET_SERVER,
-    "online_webapi": "",
-    "online_npid": "",
-    "online_password": "",
-    "online_upnp": True,
+    "vr_mode": "auto",
+    "openxr": True,
 }
 
 # wocport.ini keys the launcher edits; the rest of the file is kept.
@@ -166,12 +149,11 @@ INI_DEFAULTS = {
     "object_motion": "1",
     "show_fps": "1",
     "output_res": "1920x1080",
-    "model_lod": "0",
     "live_resolution": "0",
-    "mouse_look": "1",
-    "mouse_sensitivity": "1.00",
-    "mouse_invert_y": "0",
-    **{key: "1" if default else "0" for key, _, default in EFFECTS},
+    "render_res": "",
+    "vr_scale": "1.4",
+    "vr_fps": "60",
+    "vr_dynres": "1",
 }
 
 
@@ -187,7 +169,7 @@ def load_settings():
 def save_settings(settings):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     CONFIG_FILE.touch(mode=0o600)
-    CONFIG_FILE.chmod(0o600)  # it holds the shadNet password
+    CONFIG_FILE.chmod(0o600)
     CONFIG_FILE.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
@@ -282,11 +264,6 @@ def fsr411_build_command(upscaler, loader=None):
     return command + ([str(loader)] if loader else []), env
 
 
-def online_module():
-    """The online module beside the GPU library (gpu/wocnet; a build without its libraries has none)."""
-    return (PORT_DIR / ("bin" if PACKAGED else "out") / "gpu" / "libwocnet.so").is_file()
-
-
 def game_environment(s):
     """Environment for run.sh from the launcher settings."""
     env = dict(os.environ)
@@ -307,10 +284,8 @@ def game_environment(s):
         env["WOC_GAMEPAD"] = s["gamepad"]
     if s.get("display"):
         env["WOC_DISPLAY"] = s["display"]
-    env["WOC_SKIP_NETWORK_CHOICE"] = "1" if s.get("skip_network_choice", True) else "0"
     if s["hdr"]:
         env["WOC_HDR"] = "1"
-    env["WOC_FPS"] = s["fps_mode"]
     if s["fps_limit"] > 0:
         env["WOC_FPS_LIMIT"] = str(s["fps_limit"])
     if s["draw_pipe"]:
@@ -343,16 +318,11 @@ def game_environment(s):
         env["WOC_GPU_PROFILE"] = "1"
     if s["vk_validation"]:
         env["WOC_VK_VALIDATION"] = "1"
-    if s.get("online") and online_module():
-        server = s["online_server"].strip() or online.SHADNET_SERVER
-        community = online.community_address(s["online_community"])
-        env["WOC_ONLINE"] = "1"
-        env["WOC_SHADNET_SERVER"] = server
-        env["WOC_SHADNET_WEBAPI"] = online.webapi_setting(s["online_webapi"], server, community)
-        env["WOC_SHADNET_NPID"] = s["online_npid"].strip()
-        env["WOC_SHADNET_PASSWORD"] = s["online_password"]
-        env["WOC_UPNP"] = "1" if s["online_upnp"] else "0"
-        env["WOC_COMMUNITY_SERVER"] = community
+    # PS VR (the VR page): the game's VR mode, the headset through SteamVR (OpenXR).
+    if s.get("vr_mode", "auto") in ("on", "off"):
+        env["SHADPS4_VR"] = "1" if s["vr_mode"] == "on" else "0"
+    if not s.get("openxr", True):
+        env["SHADPS4_OPENXR"] = "0"
     for item in s["extra_env"].split():
         if "=" in item:
             key, value = item.split("=", 1)
@@ -398,24 +368,23 @@ def combo_value(row):
 
 
 # Controls (runtime_pad.c): input, label, default keyboard keys, default gamepad buttons (SDL names).
-# wocport.ini key.<input>= / pad.<input>= replace a default; no line keeps it. Mouse buttons and the
-# wheel are keys ("Mouse Left", "Wheel Down"); they act while the game holds the mouse.
+# wocport.ini key.<input>= / pad.<input>= replace a default; no line keeps it.
 CONTROLS = [
     ("cross", "Крест", "Space", "a"),
     ("circle", "Круг", "Left Shift", "b"),
     ("square", "Квадрат", "E", "x"),
     ("triangle", "Треугольник", "Q", "y"),
-    ("l1", "L1", "1, Mouse X2", "leftshoulder"),
-    ("r1", "R1", "3, Mouse Left", "rightshoulder"),
-    ("l2", "L2", "R, Mouse Right", "lefttrigger"),
-    ("r2", "R2", "F, Mouse X1", "righttrigger"),
+    ("l1", "L1", "1", "leftshoulder"),
+    ("r1", "R1", "3", "rightshoulder"),
+    ("l2", "L2", "R", "lefttrigger"),
+    ("r2", "R2", "F", "righttrigger"),
     ("l3", "L3", "Z", "leftstick"),
-    ("r3", "R3", "C, Mouse Middle", "rightstick"),
+    ("r3", "R3", "C", "rightstick"),
     ("options", "Options", "Return", "start"),
     ("touchpad", "Тачпад, левая половина (жесты)", "Tab", "back, touchpad"),
     ("touchpad_right", "Тачпад, правая половина (личные вещи)", "Backspace", ""),
-    ("up", "Крестовина вверх", "I, Wheel Up", "dpup"),
-    ("down", "Крестовина вниз", "K, Wheel Down", "dpdown"),
+    ("up", "Крестовина вверх", "I", "dpup"),
+    ("down", "Крестовина вниз", "K", "dpdown"),
     ("left", "Крестовина влево", "J", "dpleft"),
     ("right", "Крестовина вправо", "L", "dpright"),
     ("move_up", "Движение вперёд", "W", None),
@@ -473,7 +442,7 @@ class FolderList:
 
 class LauncherWindow(Adw.ApplicationWindow):
     def __init__(self, app):
-        super().__init__(application=app, title="Bloodborne")
+        super().__init__(application=app, title="WipEout Omega Collection")
         self.set_default_size(760, 820)
         self.settings = load_settings()
         set_language(self.settings.get("ui_language", ""))
@@ -504,8 +473,8 @@ class LauncherWindow(Adw.ApplicationWindow):
         log_text = self.log_text() if hasattr(self, "log_view") else ""
         self.stack.add_titled_with_icon(self.build_settings_page(), "settings", tr("Настройки"),
                                         "preferences-system-symbolic")
-        self.stack.add_titled_with_icon(self.build_online_page(), "online", tr("Онлайн"),
-                                        "network-workgroup-symbolic")
+        self.stack.add_titled_with_icon(self.build_vr_page(), "vr", tr("VR"),
+                                        "video-display-symbolic")
         self.stack.add_titled_with_icon(self.build_log_page(), "log", tr("Журнал"),
                                         "utilities-terminal-symbolic")
         self.log_view.get_buffer().set_text(log_text)
@@ -538,7 +507,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         page.add(launcher)
 
         game = Adw.PreferencesGroup(title=tr("Игра"))
-        self.game_row = Adw.ActionRow(title=tr("Папка игры (CUSA03173)"))
+        self.game_row = Adw.ActionRow(title=tr("Папка игры (CUSA05670)"))
         self.game_status = Gtk.Image()
         self.game_row.add_suffix(self.game_status)
         self.game_row.add_suffix(flat_button("folder-open-symbolic", tr("Выбрать папку с eboot.bin"),
@@ -573,8 +542,9 @@ class LauncherWindow(Adw.ApplicationWindow):
 
         self.mods_group = Adw.PreferencesGroup(
             title=tr("Моды"), description=tr(
-                "Распакуйте каждый мод в отдельную папку (с dvdroot_ps4 или сразу с chr/, parts/ и т. п.). "
-                "При совпадении файлов побеждает мод ниже в списке. Применяется при запуске."))
+                "Распакуйте каждый мод в отдельную папку: файлы в data/ (игра берёт их раньше своих "
+                "архивов) или заменённые архивы .psarc. При совпадении файлов побеждает мод ниже в "
+                "списке. Применяется при запуске."))
         self.mods_enabled_row = Adw.SwitchRow(title=tr("Загружать моды"),
                                                active=self.settings["mods_enabled"])
         self.mods_group.add(self.mods_enabled_row)
@@ -592,7 +562,7 @@ class LauncherWindow(Adw.ApplicationWindow):
 
         self.patches_group = Adw.PreferencesGroup(
             title=tr("Сторонние патчи"),
-            description=tr("XML-патчи в формате shadPS4 для версии 01.09 из папки патчей. "
+            description=tr("XML-патчи в формате shadPS4 для версии 01.07 из папки патчей. "
                            "Применяются при запуске."))
         self.patches_folder_row = Adw.ActionRow(title=tr("Папка патчей"))
         self.patches_folder_row.add_suffix(flat_button("folder-open-symbolic", tr("Выбрать папку патчей"),
@@ -643,7 +613,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         controls.add(self.gamepad_row)
         # Bindings: "Assign" waits for a key or button (woc-gpu-capabilities --read-input).
         self.control_rows = {}
-        for kind, title, icon in (("key", tr("Клавиатура и мышь"), "input-keyboard-symbolic"),
+        for kind, title, icon in (("key", tr("Клавиатура"), "input-keyboard-symbolic"),
                                   ("pad", tr("Геймпад"), "input-gaming-symbolic")):
             expander = Adw.ExpanderRow(title=title,
                                        subtitle=tr("Назначение кнопок; применяется при запуске игры"))
@@ -660,25 +630,6 @@ class LauncherWindow(Adw.ApplicationWindow):
                 self.control_rows[(kind, name)] = (row, default)
                 self.show_control(kind, name)
             controls.add(expander)
-        # Mouse look (runtime_pad.c): a click in the game takes the mouse, F1 lets it go.
-        self.mouse_look_row = Adw.SwitchRow(
-            title=tr("Камера мышью"),
-            subtitle=tr("Щелчок в окне игры захватывает мышь, F1 — отпускает"),
-            active=self.ini.get("mouse_look", "1") == "1")
-        controls.add(self.mouse_look_row)
-        self.mouse_sensitivity_row = Adw.SpinRow.new_with_range(0.1, 10.0, 0.05)
-        self.mouse_sensitivity_row.set_title(tr("Чувствительность мыши"))
-        self.mouse_sensitivity_row.set_digits(2)
-        self.mouse_sensitivity_row.set_value(float(self.ini.get("mouse_sensitivity", "1.0")))
-        controls.add(self.mouse_sensitivity_row)
-        self.mouse_invert_row = Adw.SwitchRow(title=tr("Инвертировать мышь по вертикали"),
-                                              active=self.ini.get("mouse_invert_y") == "1")
-        controls.add(self.mouse_invert_row)
-        def mouse_rows_sensitive(*_):
-            for row in (self.mouse_sensitivity_row, self.mouse_invert_row):
-                row.set_sensitive(self.mouse_look_row.get_active())
-        self.mouse_look_row.connect("notify::active", mouse_rows_sensitive)
-        mouse_rows_sensitive()
         page.add(controls)
 
         upscaler = Adw.PreferencesGroup(
@@ -726,38 +677,19 @@ class LauncherWindow(Adw.ApplicationWindow):
         upscaler.add(self.show_fps_row)
         page.add(upscaler)
 
-        effects = Adw.PreferencesGroup(title=tr("Эффекты игры"),
-                                       description=tr("Патчи игры, применяются при запуске"))
-        self.lod_row = combo_row(tr("Детализация моделей"), None, MODEL_LOD,
-                                 self.ini.get("model_lod", "0"))
-        effects.add(self.lod_row)
-        self.effect_rows = {}
-        for key, title, default in EFFECTS:
-            row = Adw.SwitchRow(title=tr(title),
-                                active=self.ini.get(key, "1" if default else "0") == "1")
-            if key == "debug_menu":
-                row.set_subtitle(tr("Нужна папка adhoc из мода Nexus #253 (шрифты adhoc/font) — в "
-                                    "dvdroot_ps4 игры или модом; без неё патч не применяется"))
-            self.effect_rows[key] = row
-            effects.add(row)
-        # The title's "play online / play offline": the port has no PSN.
-        self.skip_network_row = Adw.SwitchRow(
-            title=tr("Пропускать выбор «по сети / вне сети»"),
-            subtitle=tr("Игра сразу открывает главное меню в режиме вне сети (патч игры)"),
-            active=self.settings.get("skip_network_choice", True))
-        effects.add(self.skip_network_row)
-        page.add(effects)
-
-        frames = Adw.PreferencesGroup(title=tr("Частота кадров"))
-        self.fps_row = combo_row(tr("Режим"), tr("Какой патч частоты кадров применить к игре"),
-                                 FPS_MODES, self.settings["fps_mode"])
-        frames.add(self.fps_row)
+        image = Adw.PreferencesGroup(
+            title=tr("Изображение"),
+            description=tr("Обычный экран. Игра рендерит сцену в выбранном разрешении, окно показывает его "
+                           "в своём размере; применяется при запуске"))
+        self.render_res_row = combo_row(tr("Разрешение рендера"), None, RENDER_RES,
+                                        self.ini.get("render_res", ""))
+        image.add(self.render_res_row)
         self.limit_row = Adw.SpinRow.new_with_range(0, 480, 1)
         self.limit_row.set_title(tr("Ограничение FPS"))
         self.limit_row.set_subtitle(tr("0 — без ограничения; укажите число, чтобы ограничить FPS"))
         self.limit_row.set_value(self.settings["fps_limit"])
-        frames.add(self.limit_row)
-        page.add(frames)
+        image.add(self.limit_row)
+        page.add(image)
 
         perf = Adw.PreferencesGroup(title=tr("Производительность"))
         self.pipe_row = combo_row(
@@ -922,16 +854,15 @@ class LauncherWindow(Adw.ApplicationWindow):
         elif problem:
             kind, title, version = problem
             tooltip = {
-                "missing_update": tr("Нужно обновление 1.09: скопируйте файлы дампа обновления 1.09 в папку игры с заменой (найдена версия {})").format(version),
-                "wrong_eboot": tr("eboot.bin не от версии 1.09: скопируйте eboot.bin из дампа обновления 1.09 в папку игры с заменой"),
-                "patched_eboot": tr("eboot.bin с вшитым патчем 60 FPS от Lance McDonald: из-за него игра падает в меню жестов. Скопируйте чистый eboot.bin из дампа обновления 1.09 в папку игры с заменой"),
-                "other_title": tr("Это не магазинное издание Bloodborne (найдено {}): нужен Bloodborne любого региона с обновлением 1.09").format(title),
+                "missing_update": tr("Нужно обновление 1.07: скопируйте файлы дампа обновления 1.07 в папку игры с заменой (найдена версия {})").format(version),
+                "wrong_eboot": tr("eboot.bin не от версии 1.07: скопируйте eboot.bin из дампа обновления 1.07 в папку игры с заменой"),
+                "other_title": tr("Это не WipEout Omega Collection CUSA05670 (найдено {})").format(title),
                 "unreadable": tr("eboot.bin не читается как расшифрованный исполняемый файл PS4: сделайте дамп заново"),
-                "damaged_files": tr("Файлы игры повреждены при распаковке: шейдеры не распаковываются, игра зависнет на загрузке. Распакуйте игру и обновление 1.09 заново исправленным инструментом (issue #81)"),
+                "damaged_files": tr("Файлы игры повреждены при распаковке: архивы .psarc не распаковываются, игра зависнет на загрузке. Распакуйте игру и обновление 1.07 заново исправленным инструментом"),
             }[kind]
             self.game_row.set_subtitle(f"{path}\n{tooltip}")
         else:
-            tooltip = tr("Bloodborne CUSA03173, версия 1.09")
+            tooltip = tr("WipEout Omega Collection CUSA05670, версия 1.07")
         self.game_status.set_from_icon_name("object-select-symbolic" if ok and not problem else "dialog-warning-symbolic")
         self.game_status.set_tooltip_text(tooltip)
         self.launch_button.set_sensitive(ok or self.process is not None)
@@ -1017,12 +948,10 @@ class LauncherWindow(Adw.ApplicationWindow):
         s["gamepad"] = combo_value(self.gamepad_row)
         s["gamepad_name"] = self.gamepad_row.names[self.gamepad_row.get_selected()]
         s["display"] = combo_value(self.display_row)
-        s["skip_network_choice"] = self.skip_network_row.get_active()
         s["language"] = combo_value(self.language_row)
         s["fullscreen"] = self.fullscreen_row.get_active()
         s["present_mode"] = combo_value(self.present_row)
         s["hdr"] = self.hdr_row.get_active()
-        s["fps_mode"] = combo_value(self.fps_row)
         s["fps_limit"] = int(self.limit_row.get_value())
         s["draw_pipe"] = combo_value(self.pipe_row)
         s["readbacks"] = combo_value(self.readbacks_row)
@@ -1037,13 +966,8 @@ class LauncherWindow(Adw.ApplicationWindow):
         s["vk_validation"] = self.validation_row.get_active()
         s["extra_env"] = self.extra_row.get_text().strip()
         s["mods_enabled"] = self.mods_enabled_row.get_active()
-        s["online"] = self.online_row.get_active()
-        s["online_community"] = self.community_row.get_text().strip()
-        s["online_server"] = self.server_row.get_text().strip()
-        s["online_webapi"] = self.webapi_row.get_text().strip()
-        s["online_npid"] = self.npid_row.get_text().strip()
-        s["online_password"] = self.password_row.get_text()
-        s["online_upnp"] = self.upnp_row.get_active()
+        s["vr_mode"] = combo_value(self.vr_mode_row)
+        s["openxr"] = self.openxr_row.get_active()
         self.save_mod_profile()
         self.save_patch_profile()
         save_settings(s)
@@ -1055,12 +979,11 @@ class LauncherWindow(Adw.ApplicationWindow):
             "object_motion": "1" if self.motion_row.get_active() else "0",
             "show_fps": "1" if self.show_fps_row.get_active() else "0",
             "output_res": combo_value(self.output_row),
-            "model_lod": combo_value(self.lod_row),
             "live_resolution": combo_value(self.live_row),
-            "mouse_look": "1" if self.mouse_look_row.get_active() else "0",
-            "mouse_sensitivity": f"{self.mouse_sensitivity_row.get_value():.2f}",
-            "mouse_invert_y": "1" if self.mouse_invert_row.get_active() else "0",
-            **{key: "1" if row.get_active() else "0" for key, row in self.effect_rows.items()},
+            "render_res": combo_value(self.render_res_row),
+            "vr_scale": f"{self.vr_scale_row.get_value():.2f}",
+            "vr_fps": combo_value(self.vr_fps_row),
+            "vr_dynres": "1" if self.vr_dynres_row.get_active() else "0",
         })
         save_ini(self.ini, self.ini_lines)
         self.ini, self.ini_lines = load_ini()
@@ -1148,7 +1071,7 @@ class LauncherWindow(Adw.ApplicationWindow):
             profile = json.loads((DATA_DIR / "patches.json").read_text(encoding='utf-8'))
         except (OSError, ValueError):
             profile = {}
-        found = external_patches(directory)
+        found = external_patches(directory, games.WIPEOUT.version, games.WIPEOUT.serials)
         for key, _path, meta in found:
             default = meta.get("isEnabled", "false").lower() == "true"
             active = key in profile.get("enabled", []) or (default and key not in profile.get("disabled", []))
@@ -1179,101 +1102,49 @@ class LauncherWindow(Adw.ApplicationWindow):
 
     # --- log page ------------------------------------------------------------------------
 
-    # --- online page ---------------------------------------------------------------------
+    # --- VR page ------------------------------------------------------------------------
 
-    def build_online_page(self):
+    def build_vr_page(self):
         s = self.settings
         page = Adw.PreferencesPage()
-        play = Adw.PreferencesGroup(description=tr(
-            "Сообщения, пятна крови и призраки приходят с The Hunter's Dream; колокола и призывы "
-            "идут через сервер shadNet. Игра по сети совместима с версией для Windows: нужны версия "
-            "игры 1.09 и тот же сервер"))
-        self.online_row = Adw.SwitchRow(title=tr("Играть онлайн"),
-                                        subtitle=tr("Выключено: игра остаётся офлайн, как раньше"),
-                                        active=s["online"])
-        play.add(self.online_row)
-        if not online_module():
-            self.online_row.set_sensitive(False)
-            self.online_row.set_subtitle(tr("Эта сборка без модуля онлайна (libwocnet.so): игра только офлайн"))
-        page.add(play)
+        mode = Adw.PreferencesGroup(
+            title=tr("PS VR через SteamVR"),
+            description=tr("Шлем подключается через SteamVR (OpenXR): запустите SteamVR до игры. Не "
+                           "завершайте игру принудительно во время VR — SteamVR может упасть; закрывайте "
+                           "окно игры"))
+        self.vr_mode_row = combo_row(tr("VR-режим игры"), None, VR_MODES, s.get("vr_mode", "auto"))
+        mode.add(self.vr_mode_row)
+        self.openxr_row = Adw.SwitchRow(
+            title=tr("Выводить в шлем"),
+            subtitle=tr("Выключено: игра в VR-режиме, картинка левого глаза только в окне (для проверок)"),
+            active=s.get("openxr", True))
+        mode.add(self.openxr_row)
+        page.add(mode)
 
-        game = Adw.PreferencesGroup(title=tr("Игровой сервер (сообщения, пятна крови, призраки)"))
-        self.community_row = Adw.EntryRow(title=tr("Игровой сервер"), text=s["online_community"])
-        game.add(self.community_row)
-        page.add(game)
+        image = Adw.PreferencesGroup(title=tr("Изображение в шлеме"),
+                                     description=tr("Патчи игры, применяются при запуске"))
+        self.vr_scale_row = Adw.SpinRow.new_with_range(1.0, 3.0, 0.1)
+        self.vr_scale_row.set_title(tr("Разрешение глаза"))
+        self.vr_scale_row.set_digits(1)
+        self.vr_scale_row.set_value(float(self.ini.get("vr_scale") or "1.4"))
 
-        coop = Adw.PreferencesGroup(
-            title=tr("Сервер кооператива (колокола и призывы)"),
-            description=tr("srv.shadps4.net:31313 — публичный сервер shadPS4. Для частного сервера "
-                           "укажите host:port от его владельца. WebAPI: оставьте пустым, тогда "
-                           "берётся адрес сервера с портом 31315"))
-        self.server_row = Adw.EntryRow(title=tr("Адрес сервера"), text=s["online_server"])
-        self.webapi_row = Adw.EntryRow(title=tr("Адрес WebAPI"), text=s["online_webapi"])
-        coop.add(self.server_row)
-        coop.add(self.webapi_row)
-        page.add(coop)
-
-        account = Adw.PreferencesGroup(
-            title=tr("Учётная запись"),
-            description=tr("Имя учётной записи shadNet, не email. Зарегистрируйтесь на "
-                           "shadnet.shadps4.net или спросите владельца частного сервера. Пароль "
-                           "хранится на этом компьютере вместе с настройками лаунчера"))
-        self.npid_row = Adw.EntryRow(title=tr("Online ID (NPID)"), text=s["online_npid"])
-        self.password_row = Adw.PasswordEntryRow(title=tr("Пароль"), text=s["online_password"])
-        account.add(self.npid_row)
-        account.add(self.password_row)
-        page.add(account)
-
-        connection = Adw.PreferencesGroup(
-            title=tr("Соединение"),
-            description=tr("У всех в сессии должны быть одна версия игры (1.09) и один сервер. "
-                           "Читы меняют игру и для других игроков: выключайте их при совместной игре"))
-        self.upnp_row = Adw.SwitchRow(title=tr("UPnP (открыть порт на роутере автоматически)"),
-                                      subtitle=tr("Выключите при Tailscale или другом VPN"),
-                                      active=s["online_upnp"])
-        connection.add(self.upnp_row)
-        test = Adw.ActionRow(title=tr("Проверить соединение"))
-        self.test_button = Gtk.Button(label=tr("Проверить"), valign=Gtk.Align.CENTER)
-        self.test_button.connect("clicked", self.on_test_connection)
-        test.add_suffix(self.test_button)
-        connection.add(test)
-        self.test_rows = []
-        self.connection_group = connection
-        page.add(connection)
+        def show_eye(*_):
+            scale = self.vr_scale_row.get_value()
+            self.vr_scale_row.set_subtitle(tr("{}×{} на глаз (1.4 — как на PS4)").format(
+                round(960 * scale), round(1080 * scale)))
+        self.vr_scale_row.connect("notify::value", show_eye)
+        show_eye()
+        image.add(self.vr_scale_row)
+        self.vr_fps_row = combo_row(tr("Частота кадров"), None, VR_FPS, self.ini.get("vr_fps", "60"))
+        image.add(self.vr_fps_row)
+        self.vr_dynres_row = Adw.SwitchRow(
+            title=tr("Динамическое разрешение"),
+            subtitle=tr("Игра снижает разрешение глаза, когда считает кадр медленным; выключено — "
+                        "всегда полное"),
+            active=self.ini.get("vr_dynres", "1") != "0")
+        image.add(self.vr_dynres_row)
+        page.add(image)
         return page
-
-    def online_addresses(self):
-        server = self.server_row.get_text().strip() or online.SHADNET_SERVER
-        community = online.community_address(self.community_row.get_text())
-        webapi = online.webapi_setting(self.webapi_row.get_text(), server, community)
-        return server, webapi, community
-
-    def on_test_connection(self, _button):
-        server, webapi, community = self.online_addresses()
-        names = {"game": tr("Игровой сервер"), "shadnet": tr("Сервер shadNet"), "webapi": "WebAPI"}
-        for row in self.test_rows:
-            self.connection_group.remove(row)
-        self.test_rows = []
-        self.test_button.set_sensitive(False)
-        self.test_button.set_label(tr("Проверка…"))
-
-        def show(results):
-            for name, address, ok, detail in results:
-                # Plain text: an error such as "<urlopen error ...>" is not Pango markup.
-                row = Adw.ActionRow(title=GLib.markup_escape_text(f"{names[name]}: {address}"),
-                                    subtitle=GLib.markup_escape_text(
-                                        tr("доступен") if ok else f'{tr("недоступен")} ({detail})'))
-                row.add_prefix(Gtk.Image(icon_name="object-select-symbolic" if ok else "dialog-warning-symbolic"))
-                self.connection_group.add(row)
-                self.test_rows.append(row)
-            self.test_button.set_sensitive(True)
-            self.test_button.set_label(tr("Проверить"))
-            return False
-
-        def work():
-            results = online.check(server, webapi, community)
-            GLib.idle_add(show, results)
-        threading.Thread(target=work, daemon=True).start()
 
     def build_log_page(self):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -1347,30 +1218,9 @@ class LauncherWindow(Adw.ApplicationWindow):
         if self.process:
             self.stop_game()
             return
-        npid = self.npid_row.get_text().strip()
-        if online_module() and not self.online_row.get_active() and npid and hasattr(Adw, "AlertDialog"):
-            dialog = Adw.AlertDialog(heading="Bloodborne", body=tr(
-                "Учётная запись для игры онлайн указана, но «Играть онлайн» выключено"))
-            dialog.add_response("cancel", tr("Отмена"))
-            dialog.add_response("offline", tr("Играть офлайн"))
-            dialog.add_response("online", tr("Играть онлайн"))
-            dialog.set_response_appearance("online", Adw.ResponseAppearance.SUGGESTED)
-
-            def on_response(_dialog, response):
-                if response != "cancel":
-                    self.online_row.set_active(response == "online")
-                    self.start_game()
-            dialog.connect("response", on_response)
-            dialog.present(self)
-            return
         self.start_game()
 
     def start_game(self):
-        if self.online_row.get_active() and "@" in self.npid_row.get_text():
-            self.alert("Bloodborne", tr("Online ID — это имя учётной записи (NPID), "
-                                        "зарегистрированное на сервере, а не адрес email"))
-            self.stack.set_visible_child_name("online")
-            return
         self.store()
         self.log_view.get_buffer().set_text("")
         launcher = Gio.SubprocessLauncher.new(

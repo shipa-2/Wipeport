@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Starts the Bloodborne launcher (GTK4). With Python, PyGObject, GTK 4 and libadwaita installed
+# Starts the WipEout Omega Collection launcher (GTK4). With Python, PyGObject, GTK 4 and libadwaita installed
 # it runs directly; otherwise through nix-shell (launcher/shell.nix).
 here=$(cd -- "$(dirname -- "$0")" && pwd)
 cmd=(python3 "$here/wocport_launcher.py" "$@")
