@@ -543,17 +543,17 @@ Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& 
 
     // Vulkan has no sRGB variant of the 10-bit format, so an A2R10G10B10Srgb buffer reaches
     // the post process pass still sRGB encoded and has to be decoded there instead. A plain
-    // A2R10G10B10 buffer holds what the display shows as well (WipEout tonemaps into it): the
-    // post process encoded it a second time, a washed-out, overexposed picture.
-    // WOC_DISPLAY_10BIT_LINEAR=1: the old reading (the buffer linear, encoded here).
-    static const bool linear_10bit = [] {
-        const char* env = std::getenv("WOC_DISPLAY_10BIT_LINEAR");
+    // A2R10G10B10 buffer is taken as linear and encoded here (shadPS4's reading).
+    // WOC_DISPLAY_10BIT_ENCODED=1: a plain A2R10G10B10 buffer is shown as it is (as if it held
+    // display-encoded values): a darker, more contrasted picture.
+    static const bool encoded_10bit = [] {
+        const char* env = std::getenv("WOC_DISPLAY_10BIT_ENCODED");
         return env && env[0] == '1';
     }();
     const auto format = attribute.attrib.pixel_format;
     pp_settings.srgb_input =
         !source && (format == Libraries::VideoOut::PixelFormat::A2R10G10B10Srgb ||
-                    (!linear_10bit && format == Libraries::VideoOut::PixelFormat::A2R10G10B10));
+                    (encoded_10bit && format == Libraries::VideoOut::PixelFormat::A2R10G10B10));
 
     // Numbered here, in command order; marked where the commands are recorded.
     const u32 stream = draw_scheduler.CrumbStream();
