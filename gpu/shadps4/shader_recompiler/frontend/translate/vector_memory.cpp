@@ -181,6 +181,13 @@ void Translator::EmitVectorMemory(const GcnInst& inst) {
     case Opcode::IMAGE_SAMPLE_C_O:
     case Opcode::IMAGE_SAMPLE_C_LZ_O:
     case Opcode::IMAGE_SAMPLE_CD:
+    case Opcode::IMAGE_SAMPLE_CD_CL:
+    case Opcode::IMAGE_SAMPLE_C_CD:
+    case Opcode::IMAGE_SAMPLE_C_CD_CL:
+    case Opcode::IMAGE_SAMPLE_CD_O:
+    case Opcode::IMAGE_SAMPLE_CD_CL_O:
+    case Opcode::IMAGE_SAMPLE_C_CD_O:
+    case Opcode::IMAGE_SAMPLE_C_CD_CL_O:
         return IMAGE_SAMPLE(inst);
 
         // Image gather operations
@@ -626,7 +633,11 @@ IR::Value EmitImageSample(IR::IREmitter& ir, const GcnInst& inst, const IR::Scal
         info.gather_comp.Assign(std::bit_width(mimg.dmask) - 1);
         info.is_gather.Assign(true);
     } else {
-        info.has_derivatives.Assign(flags.test(MimgModifier::Derivative));
+        // wocport: the _CD samples (coarse derivatives) pass their gradients as _D does. Read
+        // as plain samples, their first gradient registers became the coordinates (WipEout's
+        // terrain: the detail textures smeared into blotches).
+        info.has_derivatives.Assign(flags.test(MimgModifier::Derivative) ||
+                                    flags.test(MimgModifier::CoarseDerivative));
     }
 
     // Load all dwords of T# and S#. We will use them as the handle that will guide
