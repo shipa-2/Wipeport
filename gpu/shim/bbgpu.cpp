@@ -5,6 +5,8 @@
 #include "bbport_overlay.h"
 #include "bbport_settings.h"
 #include "game_profile.h"
+#include "core/vr/vr_runtime.h"
+#include "core/libraries/system/systemservice.h"
 #include "bbport_copy.h"
 #include <sys/resource.h>
 #include "bbport_free_check.h"
@@ -60,6 +62,11 @@ namespace Libraries::GnmDriver { void RegisterLib(Core::Loader::SymbolsResolver*
 namespace Libraries::AvPlayer { void RegisterLib(Core::Loader::SymbolsResolver* sym); }
 namespace Libraries::VideoOut { void RegisterLib(Core::Loader::SymbolsResolver* sym); }
 namespace Libraries::Kernel { void RegisterEventQueue(Core::Loader::SymbolsResolver* sym); }
+namespace Libraries::Hmd { void RegisterLib(Core::Loader::SymbolsResolver* sym); }
+namespace Libraries::VrTracker { void RegisterLib(Core::Loader::SymbolsResolver* sym); }
+namespace Libraries::Camera { void RegisterLib(Core::Loader::SymbolsResolver* sym); }
+namespace Libraries::Json2 { void RegisterLib(Core::Loader::SymbolsResolver* sym); }
+namespace Libraries::Audio3d { void RegisterLib(Core::Loader::SymbolsResolver* sym); }
 
 namespace {
 struct Symbol {
@@ -223,7 +230,15 @@ u64 PS4_SYSV_ABI sceKernelReadTsc() { return Common::FencedRDTSC(); }
 u64 PS4_SYSV_ABI sceKernelGetProcessTime() { return runtime_process_time_us(); }
 u64 PS4_SYSV_ABI sceKernelGetProcessTimeCounter() { return runtime_process_time_counter(); }
 u64 PS4_SYSV_ABI sceKernelGetProcessTimeCounterFrequency() { return 1'000'000'000; }
-s32 PS4_SYSV_ABI sceKernelIsNeoMode() { return 0; } // base PS4
+// As the runtime's (src/runtime_kernel.c): BB_NEO=1 is a PS4 Pro. The GPU side has to agree
+// with what the title was told, or its Pro surface layouts (alt tile modes) are sized wrongly.
+s32 PS4_SYSV_ABI sceKernelIsNeoMode() {
+    static const bool neo = [] {
+        const char* env = std::getenv("BB_NEO");
+        return env && std::string_view{env} == "1";
+    }();
+    return neo ? 1 : 0;
+}
 s32 PS4_SYSV_ABI sceKernelGetCompiledSdkVersion(s32* ver) {
     if (!ver) return ORBIS_KERNEL_ERROR_EINVAL;
     *ver = s32(g_sdk_version);
@@ -266,13 +281,27 @@ extern "C" int bbgpu_init(const BbGpuConfig* config) {
     BbSettings::Load();
     // What the translator knows about this game (games/), before anything asks for it.
     Game::Select(config->serial);
+    // A frame the temporal upscaler does not know is left as the game draws it: the setting is
+    // off whatever bbport.ini or the menu says (as BB_UPSCALER=none), for every part reading it.
+    if (!Game::SceneUpscaler()) {
+        BbSettings::Get().upscaler = BbSettings::UpscalerOff;
+        BbSettings::Get().startup_upscaler = BbSettings::UpscalerOff;
+    }
 #ifdef BB_PGO_GENERATE
     StartProfileWriter();
 #endif
     g_sdk_version = config->sdk_version;
     if (config->user_dir) setenv("BB_GPU_USER_DIR", config->user_dir, 0);
     Core::Emulator::FillElfInfo(*config);
-    const std::string title = config->title ? config->title : "Bloodborne";
+    // bbport (AstroQuest): the emulated PS VR headset, and through OpenXR (SteamVR) a headset of
+    // this machine, for a title that supports one: before Vulkan, whose instance and device have
+    // to suit the OpenXR runtime.
+    {
+        const auto& psf = Common::ElfInfo::Instance().GetPSFAttributes();
+        Core::Vr::Runtime::Instance().Configure(psf.support_ps_vr.Value() != 0,
+                                                psf.require_ps_vr.Value() != 0);
+    }
+    const std::string title = config->title ? config->title : "bbport";
     const s32 width = config->width, height = config->height;
     g_window_thread = std::thread([title, width, height] {
         Common::SetCurrentThreadName("bb:window");
@@ -299,8 +328,23 @@ extern "C" int bbgpu_init(const BbGpuConfig* config) {
     // GnmDriver creates the presenter that the VideoOut present thread uses.
     Libraries::GnmDriver::RegisterLib(&resolver);
     Libraries::VideoOut::RegisterLib(&resolver);
+    // bbport: PS VR (AstroQuest's libraries, no headset): after FillElfInfo, which they read.
+    Libraries::Hmd::RegisterLib(&resolver);
+    Libraries::VrTracker::RegisterLib(&resolver);
+    Libraries::Camera::RegisterLib(&resolver);
+    Libraries::Json2::RegisterLib(&resolver); // after Ryty's libSceJson2 (json/json2.cpp)
+    // AstroQuest's Audio3d, mixing into the runtime's AudioOut (shim/core/libraries/audio).
+    Libraries::Audio3d::RegisterLib(&resolver);
     return 0;
 }
+
+// bbport: shadPS4's system service event queue is the C runtime's (sceSystemServiceReceiveEvent).
+extern "C" void runtime_push_system_event(const void* event, size_t size);
+namespace Libraries::SystemService {
+void PushSystemServiceEvent(const OrbisSystemServiceEvent& event) {
+    runtime_push_system_event(&event, sizeof(event));
+}
+} // namespace Libraries::SystemService
 
 namespace Libraries::Kernel { void StartKernelService(); }
 extern "C" void bbgpu_register_kernel(void) {
@@ -335,6 +379,10 @@ extern "C" int bbgpu_handle_fault(void* ucontext, void* address) {
 }
 
 extern "C" void bbgpu_patch_image(unsigned char* image, uint64_t size) {
+    // The Gnm census and the in-game settings pages hook Bloodborne 1.09's code only.
+    if (!Game::PortImageHooks()) {
+        return;
+    }
     BbGnmHooks::PatchImage(image, size);
     BbGameMenu::PatchImage(image, size);
 }

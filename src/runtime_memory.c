@@ -25,7 +25,12 @@ static uint64_t pool_size_bytes(void) {
     if (!size) {
         const char *env = getenv("BB_DMEM_MB");
         uint64_t mb = env ? strtoull(env, NULL, 10) : 0;
-        if (mb < 5056 || mb > 16384) mb = 5056;
+        /* A PS4 Pro (BB_NEO=1) gives its titles 640 MiB more (shadPS4: 5888 against 5248 MiB in
+         * all); Wipeout's Pro mode needs them (a probe for what is left fails, then frees a direct
+         * mapping with free()). */
+        const char *neo = getenv("BB_NEO");
+        const uint64_t floor_mb = neo && !strcmp(neo, "1") ? 5696 : 5056;
+        if (mb < floor_mb || mb > 16384) mb = floor_mb;
         size = mb * 1024 * 1024;
     }
     return size;
@@ -639,6 +644,37 @@ static ABI int32_t batch_map2(BatchEntry *entries, int count, int *processed, in
 static ABI int32_t batch_map(BatchEntry *entries, int count, int *processed) {
     return batch_map2(entries,count,processed,MAP_FIXED_FLAG);
 }
+/* The largest free block of direct memory in [start, end), aligned (shadPS4/AstroQuest
+ * MemoryManager::DirectQueryAvailable over the runtime's block list). */
+static ABI int32_t direct_available(uint64_t start, uint64_t end, uint64_t alignment,
+                                    uint64_t *physical, uint64_t *size) {
+    if (!physical || !size) return INVALID;
+    if (!alignment) alignment=PAGE;
+    if (!valid_alignment(alignment)) return INVALID;
+    if (end>POOL_SIZE) end=POOL_SIZE;
+    uint64_t best_at=0, best=0;
+    read_lock();
+    for (uint64_t at=start; at<end;) {
+        /* The next allocated block at or after `at` bounds the free gap. */
+        uint64_t next=end, skip=0;
+        for (int i=0;i<LIMIT;++i) {
+            if (!blocks[i].used) continue;
+            const uint64_t b=blocks[i].start, e=b+blocks[i].size;
+            if (b<=at && at<e) { skip=e; break; }
+            if (b>at && b<next) next=b;
+        }
+        if (skip) { at=skip; continue; }
+        const uint64_t aligned=align_up(at,alignment);
+        if (aligned<next && next-aligned>best) { best=next-aligned; best_at=aligned; }
+        at=next;
+        if (next<end) for (int i=0;i<LIMIT;++i)
+            if (blocks[i].used && blocks[i].start==next) { at=next+blocks[i].size; break; }
+    }
+    read_unlock();
+    if (!best) return NO_MEMORY;
+    *physical=best_at; *size=best;
+    return 0;
+}
 static const RuntimeExport exports[]={
     {"sceKernelGetDirectMemorySize",direct_size}, {"sceKernelAllocateDirectMemory",direct_allocate},
     {"sceKernelMapDirectMemory",direct_map}, {"sceKernelMapNamedDirectMemory",direct_map_named},
@@ -648,15 +684,16 @@ static const RuntimeExport exports[]={
     {"sceKernelMprotect",kernel_mprotect}, {"sceKernelQueryMemoryProtection",query_protection},
     {"sceKernelVirtualQuery",virtual_query}, {"sceKernelGetDirectMemoryType",direct_memory_type},
     {"sceKernelBatchMap",batch_map}, {"sceKernelBatchMap2",batch_map2},
+    {"sceKernelAvailableDirectMemorySize",direct_available},
     {"mmap",posix_mmap},
 };
 uintptr_t runtime_memory_resolve(const char *name) {
     /* Direct-memory NIDs are exercised by test_runtime.c before names are loaded. */
-    if (!strcmp(name, "pO96TwzOm5E#p#J")) return (uintptr_t)direct_size;
-    if (!strcmp(name, "rTXw65xmLIA#p#J")) return (uintptr_t)direct_allocate;
-    if (!strcmp(name, "L-Q3LEjIbgA#p#J")) return (uintptr_t)direct_map;
-    if (!strcmp(name, "MBuItvba6z8#p#J")) return (uintptr_t)direct_release;
-    if (!strcmp(name, "cQke9UuBQOk#p#J")) return (uintptr_t)direct_unmap;
+    if (runtime_import_is(name, "pO96TwzOm5E#libkernel")) return (uintptr_t)direct_size;
+    if (runtime_import_is(name, "rTXw65xmLIA#libkernel")) return (uintptr_t)direct_allocate;
+    if (runtime_import_is(name, "L-Q3LEjIbgA#libkernel")) return (uintptr_t)direct_map;
+    if (runtime_import_is(name, "MBuItvba6z8#libkernel")) return (uintptr_t)direct_release;
+    if (runtime_import_is(name, "cQke9UuBQOk#libkernel")) return (uintptr_t)direct_unmap;
     return RUNTIME_LOOKUP(exports,name);
 }
 /* Host-owned memory the guest can see (image, stacks, trampolines) lives in

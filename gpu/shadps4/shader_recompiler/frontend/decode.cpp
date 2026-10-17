@@ -244,7 +244,7 @@ uint32_t GcnDecodeContext::mapEncodingOp(InstEncoding encoding, Opcode opcode) {
             uint32_t op =
                 static_cast<uint32_t>(opcode) - static_cast<uint32_t>(OpcodeMap::OP_MAP_VOP2);
             encodingOp = op + static_cast<uint32_t>(OpMapVOP3VOPX::VOP3_TO_VOP2);
-        } else if (opcode >= Opcode::V_NOP && opcode <= Opcode::V_SQRT_F16) {
+        } else if (opcode >= Opcode::V_NOP && opcode <= Opcode::V_COS_F16) {
             uint32_t op =
                 static_cast<uint32_t>(opcode) - static_cast<uint32_t>(OpcodeMap::OP_MAP_VOP1);
             encodingOp = op + static_cast<uint32_t>(OpMapVOP3VOPX::VOP3_TO_VOP1);
@@ -533,9 +533,11 @@ void GcnDecodeContext::decodeDataParallelPrimitive(InstEncoding encoding, GcnCod
         auto op = dpp.GetOperation();
         LOG_ERROR(
             Render_Recompiler,
-            "unhandled DPP operation: {} ({:#x}), value {}, bc {}, row_mask {:#b}, bank_mask {:#b}",
+            "unhandled DPP operation: {} ({:#x}), value {}, bc {}, row_mask {:#b}, bank_mask {:#b}, "
+            "dword {:#010x}, opcode {}",
             magic_enum::enum_name(op.op), u32(op.op), op.value, bool(dpp.bc), u8(dpp.row_mask),
-            u8(dpp.bank_mask));
+            u8(dpp.bank_mask), *reinterpret_cast<const u32*>(&dpp),
+            magic_enum::enum_name(m_instruction.opcode));
 
         m_instruction.src[0].dpp = op;
     }
@@ -750,7 +752,7 @@ void GcnDecodeContext::decodeInstructionVOP3(uint64_t hexInstruction) {
         m_instruction.opcode =
             static_cast<Opcode>(vop2Op + static_cast<u32>(OpcodeMap::OP_MAP_VOP2));
     } else if (op >= static_cast<u32>(OpcodeVOP3::V_NOP) &&
-               op <= static_cast<u32>(OpcodeVOP3::V_SQRT_F16)) {
+               op <= static_cast<u32>(OpcodeVOP3::V_COS_F16)) {
         // Map from VOP3 to VOP1
         u32 vop1Op = op - static_cast<u32>(OpMapVOP3VOPX::VOP3_TO_VOP1);
         m_instruction.opcode =

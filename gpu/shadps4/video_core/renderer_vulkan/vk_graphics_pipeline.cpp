@@ -126,6 +126,8 @@ GraphicsPipeline::GraphicsPipeline(
                 key.num_samples, instance.GetColorSampleCounts() & instance.GetDepthSampleCounts()),
             .sampleShadingEnable =
                 fs_info.addr_flags.persp_sample_ena || fs_info.addr_flags.linear_sample_ena,
+            // bbport: DB_ALPHA_TO_MASK (alpha to coverage), unimplemented before.
+            .alphaToCoverageEnable = key.alpha_to_coverage != 0,
         };
     }
 

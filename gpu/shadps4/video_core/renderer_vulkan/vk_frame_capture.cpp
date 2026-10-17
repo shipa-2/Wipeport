@@ -19,6 +19,7 @@ struct Target {
     VAddr address{};
     vk::Format format{};
     u32 width{}, height{};
+    u32 samples{1}; ///< bbport: MSAA samples of the image (guest's)
     bool operator==(const Target&) const = default;
 };
 
@@ -57,14 +58,15 @@ std::array<std::atomic<VAddr>, 16> display_list{};
 std::atomic<u32> display_count{0};
 
 Target ToTarget(const VideoCore::ImageInfo& info) {
-    return {info.guest_address, info.pixel_format, info.size.width, info.size.height};
+    return {info.guest_address, info.pixel_format, info.size.width, info.size.height, info.num_samples};
 }
 
 std::string Describe(const Target& t) {
     if (!t.address) {
         return "-";
     }
-    return std::format("{:#x} {} {}x{}", t.address, vk::to_string(t.format), t.width, t.height);
+    return std::format("{:#x} {} {}x{}{}", t.address, vk::to_string(t.format), t.width, t.height,
+                       t.samples > 1 ? std::format(" x{} samples", t.samples) : "");
 }
 
 void AddSampled(Entry& entry) {
@@ -262,6 +264,57 @@ void FrameCapture::Sampled(const VideoCore::ImageInfo& info, bool storage) {
     if (pending_sampled.size() < 64) {
         pending_sampled.emplace_back(ToTarget(info), storage);
     }
+}
+
+bool FrameCapture::WantsContents(VAddr address, u64 ps_hash) {
+    if (state.load(std::memory_order_relaxed) != Recording) {
+        return false;
+    }
+    // BB_CAPTURE_PS: pixel shader hashes (hex) whose draws' target is wanted (addresses move
+    // from run to run, hashes do not).
+    static const std::vector<u64> wanted_ps = [] {
+        std::vector<u64> list;
+        if (const char* env = std::getenv("BB_CAPTURE_PS")) {
+            for (const char* p = env; *p;) {
+                char* end = nullptr;
+                const unsigned long long value = std::strtoull(p, &end, 16);
+                if (end == p) {
+                    break;
+                }
+                list.push_back(value);
+                p = *end == ',' ? end + 1 : end;
+            }
+        }
+        return list;
+    }();
+    if (ps_hash && std::ranges::find(wanted_ps, ps_hash) != wanted_ps.end()) {
+        return true;
+    }
+    static const std::vector<VAddr> wanted = [] {
+        std::vector<VAddr> list;
+        if (const char* env = std::getenv("BB_CAPTURE_IMAGES")) {
+            for (const char* p = env; *p;) {
+                char* end = nullptr;
+                const unsigned long long value = std::strtoull(p, &end, 0);
+                if (end == p) {
+                    break;
+                }
+                list.push_back(VAddr(value));
+                p = *end == ',' ? end + 1 : end;
+            }
+        }
+        return list;
+    }();
+    return std::ranges::find(wanted, address) != wanted.end();
+}
+
+std::string FrameCapture::ContentsPath(VAddr address, u32 width, u32 height, u32 bits) {
+    static std::atomic<u32> index{0};
+    const char* dir = std::getenv("BB_CAPTURE_DIR");
+    char path[512];
+    std::snprintf(path, sizeof(path), "%s/d%04u_%llx_%ux%u_%ubpp.raw", dir && dir[0] ? dir : ".",
+                  index.fetch_add(1), static_cast<unsigned long long>(address), width, height, bits);
+    return path;
 }
 
 void FrameCapture::Note(const char* text) {

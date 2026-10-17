@@ -140,6 +140,58 @@ static ABI int32_t rtc_rfc2822_local(char *out, const uint64_t *utc_tick) {
     return 0;
 }
 
+/* sceRtcParseDateTime: RFC 3339 ("2002-10-02T10:00:00.25-05:00"), RFC 2822 ("Wed, 02 Oct 2002
+ * 08:00:00 +0200") or asctime ("Wed Oct  2 08:00:00 2002") text to a UTC tick, the formats of
+ * shadPS4's (AstroQuest's) rtc.cpp, told apart the same way (the character at 19). */
+static int month_of(const char *m) {
+    static const char names[]="JanFebMarAprMayJunJulAugSepOctNovDec";
+    for (int i=0;i<12;++i) if (!strncmp(m,names+3*i,3)) return i+1;
+    return 0;
+}
+static int digits(const char *t, int n, int *out) {
+    int v=0;
+    for (int i=0;i<n;++i) { if (t[i]<'0' || t[i]>'9') return 0; v=v*10+(t[i]-'0'); }
+    *out=v; return 1;
+}
+static ABI int32_t rtc_parse_date_time(uint64_t *tick, const char *text) {
+    if (!tick || !text) return ERR_INVALID_POINTER;
+    const size_t length=strlen(text);
+    if (length<20) return ERR_INVALID_YEAR;
+    DateTime t={0};
+    int y=0,mo=0,d=0,h=0,mi=0,se=0,zone=0; /* zone: minutes east of UTC */
+    const char key=text[19];
+    if (key=='Z' || key=='-' || key=='+' || key=='.') {
+        if (!digits(text,4,&y) || !digits(text+5,2,&mo) || !digits(text+8,2,&d) || !digits(text+11,2,&h) ||
+            !digits(text+14,2,&mi) || !digits(text+17,2,&se)) return ERR_INVALID_YEAR;
+        const char *z=text+19;
+        uint32_t us=0, scale=100000;
+        if (*z=='.') for (++z;*z>='0' && *z<='9';++z) { us+=(uint32_t)(*z-'0')*scale; scale/=10; }
+        t.microsecond=us;
+        if (*z=='+' || *z=='-') {
+            int zh=0,zm=0;
+            if (!digits(z+1,2,&zh) || z[3]!=':' || !digits(z+4,2,&zm)) return ERR_INVALID_HOUR;
+            zone=(zh*60+zm)*(*z=='-' ? -1 : 1);
+        } else if (*z!='Z') return ERR_INVALID_HOUR;
+    } else if (key==':') {
+        if (length<25 || !digits(text+5,2,&d) || !(mo=month_of(text+8)) || !digits(text+12,4,&y) ||
+            !digits(text+17,2,&h) || !digits(text+20,2,&mi) || !digits(text+23,2,&se)) return ERR_INVALID_YEAR;
+        if (length>=31 && (text[26]=='+' || text[26]=='-')) {
+            int zh=0,zm=0;
+            if (digits(text+27,2,&zh) && digits(text+29,2,&zm)) zone=(zh*60+zm)*(text[26]=='-' ? -1 : 1);
+        }
+    } else {
+        if (length<24 || !(mo=month_of(text+4)) || !digits(text+20,4,&y) || !digits(text+11,2,&h) ||
+            !digits(text+14,2,&mi) || !digits(text+17,2,&se)) return ERR_INVALID_YEAR;
+        if (!digits(text+8,2,&d) && !(text[8]==' ' && digits(text+9,1,&d))) return ERR_INVALID_DAY;
+    }
+    t.year=(uint16_t)y; t.month=(uint16_t)mo; t.day=(uint16_t)d;
+    t.hour=(uint16_t)h; t.minute=(uint16_t)mi; t.second=(uint16_t)se;
+    const int32_t e=validate(&t);
+    if (e) return e;
+    *tick=(uint64_t)((int64_t)to_tick(&t)-(int64_t)zone*60000000);
+    return 0;
+}
+
 static const RuntimeExport exports[]={
     {"sceRtcGetCurrentClockLocalTime",rtc_current_local}, {"sceRtcGetCurrentClock",rtc_current_clock},
     {"sceRtcGetCurrentTick",rtc_current_tick}, {"sceRtcGetCurrentNetworkTick",rtc_current_tick},
@@ -147,5 +199,6 @@ static const RuntimeExport exports[]={
     {"sceRtcGetDayOfWeek",rtc_day_of_week}, {"sceRtcGetTick",rtc_get_tick}, {"sceRtcSetTick",rtc_set_tick},
     {"sceRtcGetTickResolution",rtc_tick_resolution}, {"sceRtcSetTime_t",rtc_set_time_t},
     {"sceRtcGetTime_t",rtc_get_time_t}, {"sceRtcFormatRFC2822LocalTime",rtc_rfc2822_local},
+    {"sceRtcParseDateTime",rtc_parse_date_time},
 };
 uintptr_t runtime_rtc_resolve(const char *name) { return RUNTIME_LOOKUP(exports,name); }

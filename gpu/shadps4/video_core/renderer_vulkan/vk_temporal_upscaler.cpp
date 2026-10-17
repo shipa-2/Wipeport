@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+#include "game_profile.h"
 #include "video_core/renderer_vulkan/vk_temporal_upscaler.h"
 #include "video_core/renderer_vulkan/vk_gpu_profiler.h"
 #include "video_core/renderer_vulkan/motion_history.h"
@@ -187,9 +188,13 @@ TemporalUpscaler::TemporalUpscaler(const Instance& instance_, Scheduler& schedul
                         : dlss->Problem();
         BbSettings::ConfigureDlssSupport(dlss && dlss->Available(), problem.c_str());
     }
-    // Available unless BB_UPSCALER=none; on/off and the parameters are the menu's settings.
+    // Available unless BB_UPSCALER=none or the game's frame is unknown to it (game profile);
+    // on/off and the parameters are the menu's settings.
     const char* env = std::getenv("BB_UPSCALER");
-    enabled = !(env && std::strcmp(env, "none") == 0);
+    enabled = !(env && std::strcmp(env, "none") == 0) && Game::SceneUpscaler();
+    if (!Game::SceneUpscaler()) {
+        std::printf("Upscaler: off (the game's frame is not known to it)\n");
+    }
     if (const char* hash = std::getenv("BB_UPSCALE_BEFORE_CS")) {
         trigger_hash = std::strtoull(hash, nullptr, 16);
     }

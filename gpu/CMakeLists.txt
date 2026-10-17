@@ -50,6 +50,8 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(XXHASH REQUIRED IMPORTED_TARGET libxxhash)
 pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
 pkg_check_modules(X11 REQUIRED IMPORTED_TARGET x11)
+# PS VR in a headset of this machine (AstroQuest's OpenXR host): SteamVR or another OpenXR runtime.
+pkg_check_modules(OPENXR REQUIRED IMPORTED_TARGET openxr)
 find_package(miniz REQUIRED)
 find_package(Zydis REQUIRED)
 find_program(GLSLANG_COMPILER NAMES glslang glslangValidator REQUIRED)
@@ -128,12 +130,19 @@ file(GLOB LAYER_SOURCES CONFIGURE_DEPENDS layer/*.cpp)
 file(GLOB GAME_SOURCES CONFIGURE_DEPENDS games/*.cpp)
 # The translator's own command processor (docs/TRANSLATOR_ARCHITECTURE.ru.md, step 2): cp/.
 file(GLOB CP_SOURCES CONFIGURE_DEPENDS cp/*.cpp)
+# PS VR libraries from AstroQuest (github.com/bigmak94/AstroQuest, its shadPS4 fork), without
+# a headset (shim/core/vr/vr_runtime.h): VENDOR.txt.
+file(GLOB PSVR_SOURCES CONFIGURE_DEPENDS shadps4/core/libraries/hmd/*.cpp shadps4/core/libraries/vr_tracker/*.cpp
+    shadps4/core/libraries/camera/*.cpp shadps4/core/libraries/json/*.cpp
+    shadps4/core/libraries/audio3d/*.cpp shadps4/core/vr/*.cpp)
 add_library(bbgpu SHARED ${VIDEO_CORE} ${RECOMPILER} ${COMMON} ${SHIM_SOURCES} ${LAYER_SOURCES} ${GAME_SOURCES} ${CP_SOURCES}
     shadps4/core/libraries/gnmdriver/gnmdriver.cpp
     shadps4/core/libraries/videoout/driver.cpp shadps4/core/libraries/videoout/video_out.cpp
     shadps4/core/libraries/kernel/equeue.cpp ${AVPLAYER}
-    shadps4/core/libraries/videodec/video_utils.cpp)
+    shadps4/core/libraries/videodec/video_utils.cpp ${PSVR_SOURCES})
 add_dependencies(bbgpu host_shaders)
+target_compile_definitions(bbgpu PRIVATE ENABLE_OPENXR_HOST)
+target_link_libraries(bbgpu PRIVATE PkgConfig::OPENXR)
 # In-game settings menu: Dear ImGui (third_party/imgui, MIT) with its Vulkan backend, and an
 # embedded Cyrillic font (third_party/fonts).
 target_sources(bbgpu PRIVATE third_party/imgui/imgui.cpp third_party/imgui/imgui_draw.cpp

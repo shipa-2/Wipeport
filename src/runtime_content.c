@@ -120,13 +120,30 @@ static ABI int32_t addon_list(uint32_t service,void *list,uint32_t capacity,uint
     if (count) printf("Runtime: AppContent add-ons reported installed (%s): %u\n",root,(unsigned)count);
     ++lists; return 0;
 }
+/* WipEout's SDK (shadPS4/AstroQuest app_content.cpp, sysmodule.cpp): no add-on carries an
+ * entitlement key here, a download is never queued, internal modules load as the others. */
+static ABI int32_t entitlement_key(uint32_t service,const void *label,void *key) {
+    (void)service;
+    return !label || !key ? (int32_t)0x80D90002 /* PARAMETER */ : (int32_t)0x80D90007; /* DRM_NO_ENTITLEMENT */
+}
+static ABI int32_t enqueue_download(void) { return 0; }
+static ABI int32_t module_load_internal(uint16_t id,int32_t argc,const void *argv,uint64_t unknown,int32_t *result) {
+    (void)argc; (void)argv;
+    if (unknown) return INVALID_ID;
+    const int32_t e=module_load(id);
+    if (!e && result) *result=0;
+    return e;
+}
 uintptr_t runtime_content_resolve(const char *name) {
-    if (!strcmp(name,"g8cM39EUZ6o#M#N")) return (uintptr_t)module_load;
-    if (!strcmp(name,"fMP5NHUOaMk#M#N")) return (uintptr_t)module_loaded;
-    if (!strcmp(name,"eR2bZFAAU0Q#M#N")) return (uintptr_t)module_unload;
-    if (!strcmp(name,"R9lA82OraNs#c#d")) return (uintptr_t)content_init;
-    if (!strcmp(name,"99b82IKXpH4#c#d")) return (uintptr_t)param_int;
-    if (!strcmp(name,"xnd8BJzAxmk#c#d")) return (uintptr_t)addon_list;
+    if (runtime_import_is(name, "XTWR0UXvcgs#libSceAppContent")) return (uintptr_t)entitlement_key;
+    if (runtime_import_is(name, "7gxh+5QubhY#libSceAppContent")) return (uintptr_t)enqueue_download;
+    if (runtime_import_is(name, "hHrGoGoNf+s#libSceSysmodule")) return (uintptr_t)module_load_internal;
+    if (runtime_import_is(name, "g8cM39EUZ6o#libSceSysmodule")) return (uintptr_t)module_load;
+    if (runtime_import_is(name, "fMP5NHUOaMk#libSceSysmodule")) return (uintptr_t)module_loaded;
+    if (runtime_import_is(name, "eR2bZFAAU0Q#libSceSysmodule")) return (uintptr_t)module_unload;
+    if (runtime_import_is(name, "R9lA82OraNs#libSceAppContent")) return (uintptr_t)content_init;
+    if (runtime_import_is(name, "99b82IKXpH4#libSceAppContent")) return (uintptr_t)param_int;
+    if (runtime_import_is(name, "xnd8BJzAxmk#libSceAppContent")) return (uintptr_t)addon_list;
     return 0;
 }
 void runtime_content_report(void) {

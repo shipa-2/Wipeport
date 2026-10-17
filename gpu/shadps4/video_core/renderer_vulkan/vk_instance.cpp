@@ -11,6 +11,7 @@
 #include "common/types.h"
 #include "imgui/renderer/imgui_core.h"
 #include "sdl_window.h"
+#include "core/vr/openxr_host.h"
 #include "video_core/renderer_vulkan/liverpool_to_vk.h"
 #include "bbport_toggles.h"
 #include "video_core/renderer_vulkan/vk_dlss.h"
@@ -129,6 +130,23 @@ Instance::Instance(const Frontend::WindowSystemInfo& window_info, s32 physical_d
     const std::size_t num_physical_devices = static_cast<u16>(physical_devices.size());
     ASSERT_MSG(num_physical_devices > 0, "No physical devices found");
     LOG_INFO(Render_Vulkan, "Found {} physical devices", num_physical_devices);
+
+    // bbport (AstroQuest): a headset of the machine's own is driven from one graphics card,
+    // and takes pictures from nowhere else.
+    if (const vk::PhysicalDevice headset_device =
+            Core::Vr::OpenXrHost::Instance().PreferredPhysicalDevice(*instance)) {
+        const auto it = std::ranges::find(physical_devices, headset_device);
+        if (it != physical_devices.end()) {
+            const s32 index = static_cast<s32>(std::distance(physical_devices.begin(), it));
+            if (physical_device_index >= 0 && physical_device_index != index) {
+                LOG_WARNING(Render_Vulkan,
+                            "The headset is driven by graphics card {}, which is used instead "
+                            "of the configured {}",
+                            index, physical_device_index);
+            }
+            physical_device_index = index;
+        }
+    }
 
     if (physical_device_index < 0) {
         std::vector<
@@ -256,7 +274,11 @@ bool Instance::CreateDevice() {
         return false;
     }
 
-    boost::container::static_vector<const char*, 64> enabled_extensions;
+    // bbport (AstroQuest): what the headset's OpenXR runtime wants of a device it is handed
+    // pictures by. (The names have to outlive the making of the device.)
+    const std::vector<std::string> headset_extensions =
+        Core::Vr::OpenXrHost::Instance().VulkanDeviceExtensions();
+    boost::container::static_vector<const char*, 96> enabled_extensions;
     const auto add_extension = [&](std::string_view extension) -> bool {
         const auto result =
             std::find_if(available_extensions.begin(), available_extensions.end(),
@@ -404,6 +426,12 @@ bool Instance::CreateDevice() {
         shader_clock_features = feature_chain.get<vk::PhysicalDeviceShaderClockFeaturesKHR>();
         LOG_INFO(Render_Vulkan, "- shaderSubgroupClock: {}",
                  shader_clock_features.shaderSubgroupClock);
+    }
+    for (const std::string& name : headset_extensions) {
+        if (std::ranges::none_of(enabled_extensions,
+                                 [&](const char* enabled) { return name == enabled; })) {
+            add_extension(name);
+        }
     }
     const bool calibrated_timestamps =
         TRACY_GPU_ENABLED ? add_extension(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME) : false;

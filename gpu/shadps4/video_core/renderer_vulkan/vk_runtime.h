@@ -94,6 +94,12 @@ public:
                     const vk::ClearValue& clear_value);
 
     void SetBackingSamples(VideoCore::Image* image, u32 num_samples, bool copy_backing = true);
+    /// bbport: how many times an image changed backing (sample count): render states built on
+    /// the old backing's views are stale (Rasterizer's RenderStateMemo).
+    u64 BackingSwaps() const {
+        return backing_swaps;
+    }
+    u64 backing_swaps = 0;
 
     void AccessBuffer(const VideoCore::Buffer* handle, u64 offset, u64 size,
                       vk::PipelineStageFlags2 src_stage, vk::AccessFlags2 src_access);

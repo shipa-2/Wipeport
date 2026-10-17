@@ -133,6 +133,21 @@ void Translator::EmitVectorAlu(const GcnInst& inst) {
         return V_CVT_I32_F32(inst);
     case Opcode::V_CVT_F16_F32:
         return V_CVT_F16_F32(inst);
+    case Opcode::V_RCP_F16:
+    case Opcode::V_SQRT_F16:
+    case Opcode::V_RSQ_F16:
+    case Opcode::V_LOG_F16:
+    case Opcode::V_EXP_F16:
+    case Opcode::V_FREXP_MANT_F16:
+    case Opcode::V_FLOOR_F16:
+    case Opcode::V_CEIL_F16:
+    case Opcode::V_TRUNC_F16:
+    case Opcode::V_RNDNE_F16:
+    case Opcode::V_FRACT_F16:
+    case Opcode::V_SIN_F16:
+    case Opcode::V_COS_F16:
+    case Opcode::V_FREXP_EXP_I16_F16:
+        return V_UNARY_F16(inst);
     case Opcode::V_CVT_F32_F16:
         return V_CVT_F32_F16(inst);
     case Opcode::V_CVT_FLR_I32_F32:
@@ -222,6 +237,27 @@ void Translator::EmitVectorAlu(const GcnInst& inst) {
 
         // VOPC
         //     V_CMP_{OP16}_F32
+    case Opcode::V_CMP_F_F16:
+        return V_CMP_F32(ConditionOp::F, false, inst, true);
+    case Opcode::V_CMP_LT_F16:
+        return V_CMP_F32(ConditionOp::LT, false, inst, true);
+    case Opcode::V_CMP_EQ_F16:
+        return V_CMP_F32(ConditionOp::EQ, false, inst, true);
+    case Opcode::V_CMP_LE_F16:
+        return V_CMP_F32(ConditionOp::LE, false, inst, true);
+    case Opcode::V_CMP_GT_F16:
+        return V_CMP_F32(ConditionOp::GT, false, inst, true);
+    case Opcode::V_CMP_LG_F16:
+        return V_CMP_F32(ConditionOp::LG, false, inst, true);
+    case Opcode::V_CMP_GE_F16:
+        return V_CMP_F32(ConditionOp::GE, false, inst, true);
+    case Opcode::V_CMP_O_F16: {
+        // Ordered: neither is NaN.
+        const IR::F32 a{GetSrc16<IR::F32>(inst.src[0])};
+        const IR::F32 b{GetSrc16<IR::F32>(inst.src[1])};
+        SetDst64(inst.dst[1], ir.Ballot(ir.LogicalNot(ir.LogicalOr(ir.FPIsNan(a), ir.FPIsNan(b)))));
+        return;
+    }
     case Opcode::V_CMP_F_F32:
         return V_CMP_F32(ConditionOp::F, false, inst);
     case Opcode::V_CMP_LT_F32:
@@ -507,6 +543,8 @@ void Translator::EmitVectorAlu(const GcnInst& inst) {
         return V_MAX3_F16(inst);
     case Opcode::V_MED3_F16:
         return V_MED3_F16(inst);
+    case Opcode::V_MAD_F16:
+        return V_MAD_F16(inst);
     case Opcode::V_ADD3_U32:
         return V_ADD3_U32(inst);
     case Opcode::V_LSHL_OR_B32:
@@ -1172,9 +1210,10 @@ void Translator::V_MOVRELSD_B32(const GcnInst& inst) {
 
 // VOPC
 
-void Translator::V_CMP_F32(ConditionOp op, bool set_exec, const GcnInst& inst) {
-    const IR::F32 src0{GetSrc<IR::F32>(inst.src[0])};
-    const IR::F32 src1{GetSrc<IR::F32>(inst.src[1])};
+void Translator::V_CMP_F32(ConditionOp op, bool set_exec, const GcnInst& inst, bool f16) {
+    // f16: the PS4 Pro's half precision compares (V_CMP_*_F16), compared as single precision.
+    const IR::F32 src0{f16 ? GetSrc16<IR::F32>(inst.src[0]) : GetSrc<IR::F32>(inst.src[0])};
+    const IR::F32 src1{f16 ? GetSrc16<IR::F32>(inst.src[1]) : GetSrc<IR::F32>(inst.src[1])};
     const IR::U1 result = [&] {
         switch (op) {
         case ConditionOp::F:
@@ -1715,6 +1754,13 @@ void Translator::V_MAX3_F16(const GcnInst& inst) {
     SetDst16(inst.dst[0], result);
 }
 
+void Translator::V_MAD_F16(const GcnInst& inst) {
+    const auto src0 = GetSrc16<IR::F32>(inst.src[0]);
+    const auto src1 = GetSrc16<IR::F32>(inst.src[1]);
+    const auto src2 = GetSrc16<IR::F32>(inst.src[2]);
+    SetDst16(inst.dst[0], ir.FPFma(src0, src1, src2));
+}
+
 void Translator::V_MED3_F16(const GcnInst& inst) {
     const auto src0 = GetSrc16<IR::F32>(inst.src[0]);
     const auto src1 = GetSrc16<IR::F32>(inst.src[1]);
@@ -2003,4 +2049,43 @@ void Translator::VMovRelDHelper(u32 dst_vgprno, const IR::U32 src_val, const IR:
     }
 }
 
+// bbport: the PS4 Pro's half precision VOP1 operations (GCN3 order from V_RCP_F16 = 84): worked
+// out in single precision, the result rounded to half (an integer, for the exponent).
+void Translator::V_UNARY_F16(const GcnInst& inst) {
+    const IR::F32 src0{GetSrc16<IR::F32>(inst.src[0])};
+    switch (inst.opcode) {
+    case Opcode::V_RCP_F16:
+        return SetDst16(inst.dst[0], ir.FPRecip(src0));
+    case Opcode::V_SQRT_F16:
+        return SetDst16(inst.dst[0], ir.FPSqrt(src0));
+    case Opcode::V_RSQ_F16:
+        return SetDst16(inst.dst[0], ir.FPRecipSqrt(src0));
+    case Opcode::V_LOG_F16:
+        return SetDst16(inst.dst[0], ir.FPLog2(src0));
+    case Opcode::V_EXP_F16:
+        return SetDst16(inst.dst[0], ir.FPExp2(src0));
+    case Opcode::V_FREXP_MANT_F16:
+        return SetDst16(inst.dst[0], ir.FPFrexpSig(src0));
+    case Opcode::V_FLOOR_F16:
+        return SetDst16(inst.dst[0], ir.FPFloor(src0));
+    case Opcode::V_CEIL_F16:
+        return SetDst16(inst.dst[0], ir.FPCeil(src0));
+    case Opcode::V_TRUNC_F16:
+        return SetDst16(inst.dst[0], ir.FPTrunc(src0));
+    case Opcode::V_RNDNE_F16:
+        return SetDst16(inst.dst[0], ir.FPRoundEven(src0));
+    case Opcode::V_FRACT_F16:
+        return SetDst16(inst.dst[0], ir.FPFract(src0));
+    case Opcode::V_SIN_F16:
+        return SetDst16(inst.dst[0], ir.FPSin(src0));
+    case Opcode::V_COS_F16:
+        return SetDst16(inst.dst[0], ir.FPCos(src0));
+    case Opcode::V_FREXP_EXP_I16_F16:
+        return SetDst16(inst.dst[0], ir.FPFrexpExp(src0));
+    default:
+        UNREACHABLE();
+    }
+}
+
 } // namespace Shader::Gcn
+

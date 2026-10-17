@@ -396,6 +396,10 @@ int main(int argc,char **argv) {
     runtime_start(0); assert(runtime_resolve("bzQExy189ZI#q#q",0)==0);
     runtime_start(1);
     assert(runtime_resolve("bzQExy189ZI#wrong#module",0)==0);
+    /* link_modules.py's spelling, "NID#library": the same import as Bloodborne's "#q#q". */
+    assert(runtime_resolve("bzQExy189ZI#libc",0)==runtime_resolve("bzQExy189ZI#q#q",0));
+    assert(runtime_resolve("bzQExy189ZI#libc",0)!=0);
+    assert(runtime_resolve("bzQExy189ZI#libkernel",0)==0);
     assert(runtime_resolve("unknown",0)==0);
     assert(runtime_resolve("8zTFvBIAIN8#q#q",1)==0);
     assert(runtime_resolve("f7uOxY9mM1U#p#J",0)==0);

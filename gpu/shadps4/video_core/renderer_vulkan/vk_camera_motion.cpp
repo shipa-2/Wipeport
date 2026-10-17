@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+#include "game_profile.h"
 #include "video_core/renderer_vulkan/vk_camera_motion.h"
 
 #include <chrono>
@@ -79,7 +80,7 @@ CameraMotion::CameraMotion(const Instance& instance_, Scheduler& scheduler_,
     const char* upscaler = std::getenv("BB_UPSCALER");
     // The upscaler can be switched on from the menu at any time: the camera is always tracked
     // unless BB_UPSCALER=none.
-    for_upscaler = !(upscaler && std::strcmp(upscaler, "none") == 0);
+    for_upscaler = !(upscaler && std::strcmp(upscaler, "none") == 0) && Game::SceneUpscaler();
     const auto device = instance.GetDevice();
     if (for_upscaler) {
         const std::array<vk::DescriptorSetLayoutBinding, 3> motion_bindings = {{

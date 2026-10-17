@@ -29,6 +29,7 @@
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_pipeline_cache.h"
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
+#include <vk_mem_alloc.h> // bbport: CaptureTargetContents
 #include "video_core/renderer_vulkan/vk_gpu_profiler.h"
 #include "bbport_threads.h"
 #include "video_core/renderer_vulkan/vk_runtime.h"
@@ -1807,6 +1808,9 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
                           u32(regs.depth_control.depth_write_enable));
             FrameCapture::Note(note);
         }
+        if (cb_descs[0].first) {
+            CaptureTargetContents(texture_cache.GetImage(cb_descs[0].first), ps ? ps->pgm_hash : 0);
+        }
     }
     DebugState.IncDrawCall();
 
@@ -3011,6 +3015,12 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
     for (u32 buffer_index = 0; buffer_index < stage.buffers.size(); ++buffer_index) {
         const auto& desc = stage.buffers[buffer_index];
         const RingBinding* ring = num_ring_stages ? FindRingBinding(stage, buffer_index) : nullptr;
+        // bbport: the ring holds what the CPU saw in the game's memory; constants that are an
+        // image's memory (WipEout's tone mapping reads the exposure its previous pass rendered
+        // into a 3x1 target) are the GPU's: bound from the image below instead.
+        if (ring && !desc.IsSpecial() && texture_cache.FindImageFromRange(ring->address, ring->size)) {
+            ring = nullptr;
+        }
         if (ring) {
             // Copied by the GPU command thread into the constant ring (read-only).
             if (!desc.IsSpecial()) {
@@ -3019,6 +3029,10 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                     camera_motion->OnConstants(reinterpret_cast<const float*>(ring->address));
                 }
                 push_data.AddOffset(binding.buffer, 0);
+            }
+            if (FrameCapture::Active() && memory->IsValidGpuMapping(ring->address, 0)) {
+                FrameCapture::Buffer(stage.pgm_hash, binding.buffer, ring->address,
+                                     reinterpret_cast<const void*>(ring->address), ring->size);
             }
             buffer_infos.emplace_back(constant_ring->Handle(), ring->offset, ring->size);
         } else if (desc.IsSpecial()) {
@@ -3143,6 +3157,19 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                 if (size != vsharp.GetSize()) {
                     LOG_ERROR(Render, "Clamped size from {} to {} for stage {:#x}",
                               vsharp.GetSize(), size, stage.pgm_hash);
+                }
+                // bbport: a constant or storage buffer that is a render target's memory reads
+                // what the GPU rendered there: the image is copied into the game's memory first,
+                // in stream order (TextureCache::DownloadImageMemory). WipEout's tone mapping
+                // reads its exposure, rendered into a 3x1 target, as constants.
+                if (!desc.is_written && !desc.is_formatted) {
+                    if (const auto image_id = texture_cache.FindImageFromRange(vsharp.base_address, size);
+                        image_id && texture_cache.GetImage(image_id).info.guest_address == vsharp.base_address) {
+                        // The copy changes image state: the texture binding helper finishes
+                        // first (it runs beside this, BindResources).
+                        runtime.BeforeImageAccess();
+                        texture_cache.DownloadForBufferRead(image_id);
+                    }
                 }
                 const auto [buffer, offset] = buffer_cache.ObtainBuffer(
                     vsharp.base_address, size, desc.is_written, desc.is_formatted);
@@ -3704,7 +3731,8 @@ RenderState Rasterizer::BeginRendering(const GraphicsPipeline* pipeline) {
         bool usable = begin_memo.valid && scheduler.IsRenderingWith(begin_memo.state) &&
                       !regs.depth_render_control.depth_clear_enable &&
                       !regs.depth_render_control.stencil_clear_enable &&
-                      signature == begin_memo.signature;
+                      signature == begin_memo.signature &&
+                      begin_memo.backing_swaps == runtime.BackingSwaps();
         for (const auto id : signature.ids) {
             if (usable && id) {
                 const auto& image = texture_cache.GetImage(id);
@@ -3732,7 +3760,7 @@ RenderState Rasterizer::BeginRendering(const GraphicsPipeline* pipeline) {
         if (!clears) {
             // Recomputed after the full path: it may have started the scene (scene_started).
             begin_memo = {true, MakeBeginSignature(pipeline), state, push_data.scene_size,
-                          target_scale};
+                          target_scale, runtime.BackingSwaps()};
         }
     }
     return state;
@@ -4050,6 +4078,139 @@ RenderState Rasterizer::BeginRenderingFull(const GraphicsPipeline* pipeline) {
         object_motion->Attach(state, state.width, state.height);
     }
     return state;
+}
+
+// bbport: frame analyzer (BB_CAPTURE_IMAGES): a render target's contents after a draw, read back
+// to a file once the GPU has done it. The pass is ended for the copy (debugging only).
+void Rasterizer::CaptureTargetContents(VideoCore::Image& image, u64 ps_hash) {
+    if (!FrameCapture::WantsContents(image.info.guest_address, ps_hash) || !image.backing) {
+        return;
+    }
+    const u32 width = image.info.size.width, height = image.info.size.height;
+    const u32 bits = image.info.num_bits;
+    const VkDeviceSize size = VkDeviceSize(width) * height * std::max(1u, bits / 8);
+    const VmaAllocator allocator = instance.GetAllocator();
+    const VkBufferCreateInfo buffer_ci{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = size,
+        .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+    };
+    const VmaAllocationCreateInfo alloc_ci{
+        .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
+        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
+    };
+    VkBuffer buffer{};
+    VmaAllocation allocation{};
+    VmaAllocationInfo info{};
+    if (vmaCreateBuffer(allocator, &buffer_ci, &alloc_ci, &buffer, &allocation, &info) != VK_SUCCESS) {
+        return;
+    }
+    // A multisampled image is resolved into a one-sample image first (a buffer copy takes one).
+    const bool multisampled = image.backing->num_samples > 1;
+    VkImage resolved{};
+    VmaAllocation resolved_allocation{};
+    if (multisampled) {
+        const auto& ci = image.backing->image.image_ci;
+        const VkImageCreateInfo image_ci{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .imageType = VK_IMAGE_TYPE_2D,
+            .format = static_cast<VkFormat>(ci.format),
+            .extent = {width, height, 1},
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .samples = VK_SAMPLE_COUNT_1_BIT,
+            .tiling = VK_IMAGE_TILING_OPTIMAL,
+            .usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+        };
+        const VmaAllocationCreateInfo image_alloc{.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE};
+        if (vmaCreateImage(allocator, &image_ci, &image_alloc, &resolved, &resolved_allocation,
+                           nullptr) != VK_SUCCESS) {
+            vmaDestroyBuffer(allocator, buffer, allocation);
+            return;
+        }
+    }
+    scheduler.EndRendering();
+    const vk::Image handle = image.GetImage();
+    const vk::ImageLayout layout = image.backing->state.layout;
+    const vk::ImageAspectFlags aspect = image.aspect_mask;
+    const vk::Image temp = resolved;
+    scheduler.Record([=](vk::CommandBuffer cmdbuf) {
+        const vk::ImageSubresourceRange range{aspect, 0, 1, 0, 1};
+        const vk::ImageMemoryBarrier2 to_copy[2] = {
+            {
+                .srcStageMask = vk::PipelineStageFlagBits2::eAllCommands,
+                .srcAccessMask = vk::AccessFlagBits2::eMemoryWrite,
+                .dstStageMask = vk::PipelineStageFlagBits2::eTransfer,
+                .dstAccessMask = vk::AccessFlagBits2::eTransferRead,
+                .oldLayout = layout,
+                .newLayout = vk::ImageLayout::eTransferSrcOptimal,
+                .image = handle,
+                .subresourceRange = range,
+            },
+            {
+                .srcStageMask = vk::PipelineStageFlagBits2::eNone,
+                .dstStageMask = vk::PipelineStageFlagBits2::eTransfer,
+                .dstAccessMask = vk::AccessFlagBits2::eTransferWrite,
+                .oldLayout = vk::ImageLayout::eUndefined,
+                .newLayout = vk::ImageLayout::eTransferDstOptimal,
+                .image = temp,
+                .subresourceRange = range,
+            },
+        };
+        cmdbuf.pipelineBarrier2(
+            {.imageMemoryBarrierCount = temp ? 2u : 1u, .pImageMemoryBarriers = to_copy});
+        vk::Image source = handle;
+        if (temp) {
+            const vk::ImageResolve region{
+                .srcSubresource = {aspect, 0, 0, 1},
+                .dstSubresource = {aspect, 0, 0, 1},
+                .extent = {width, height, 1},
+            };
+            cmdbuf.resolveImage(handle, vk::ImageLayout::eTransferSrcOptimal, temp,
+                                vk::ImageLayout::eTransferDstOptimal, region);
+            const vk::ImageMemoryBarrier2 resolved_barrier{
+                .srcStageMask = vk::PipelineStageFlagBits2::eTransfer,
+                .srcAccessMask = vk::AccessFlagBits2::eTransferWrite,
+                .dstStageMask = vk::PipelineStageFlagBits2::eTransfer,
+                .dstAccessMask = vk::AccessFlagBits2::eTransferRead,
+                .oldLayout = vk::ImageLayout::eTransferDstOptimal,
+                .newLayout = vk::ImageLayout::eTransferSrcOptimal,
+                .image = temp,
+                .subresourceRange = range,
+            };
+            cmdbuf.pipelineBarrier2({.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &resolved_barrier});
+            source = temp;
+        }
+        const vk::BufferImageCopy region{
+            .imageSubresource = {aspect, 0, 0, 1},
+            .imageExtent = {width, height, 1},
+        };
+        cmdbuf.copyImageToBuffer(source, vk::ImageLayout::eTransferSrcOptimal, buffer, region);
+        const vk::ImageMemoryBarrier2 back{
+            .srcStageMask = vk::PipelineStageFlagBits2::eTransfer,
+            .srcAccessMask = vk::AccessFlagBits2::eTransferRead,
+            .dstStageMask = vk::PipelineStageFlagBits2::eAllCommands,
+            .dstAccessMask = vk::AccessFlagBits2::eMemoryRead | vk::AccessFlagBits2::eMemoryWrite,
+            .oldLayout = vk::ImageLayout::eTransferSrcOptimal,
+            .newLayout = layout,
+            .image = handle,
+            .subresourceRange = range,
+        };
+        cmdbuf.pipelineBarrier2({.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &back});
+    });
+    scheduler.DeferPriorityOperation(
+        [allocator, buffer, allocation, info, size, resolved, resolved_allocation,
+         file = FrameCapture::ContentsPath(image.info.guest_address, width, height, bits)] {
+            vmaInvalidateAllocation(allocator, allocation, 0, VK_WHOLE_SIZE);
+            if (FILE* f = std::fopen(file.c_str(), "wb")) {
+                std::fwrite(info.pMappedData, 1, size, f);
+                std::fclose(f);
+            }
+            vmaDestroyBuffer(allocator, buffer, allocation);
+            if (resolved) {
+                vmaDestroyImage(allocator, resolved, resolved_allocation);
+            }
+        });
 }
 
 void Rasterizer::Resolve() {

@@ -209,6 +209,7 @@ public:
     void V_CVT_I32_F32(const GcnInst& inst);
     void V_CVT_F16_F32(const GcnInst& inst);
     void V_CVT_F32_F16(const GcnInst& inst);
+    void V_UNARY_F16(const GcnInst& inst);
     void V_CVT_RPI_I32_F32(const GcnInst& inst);
     void V_CVT_FLR_I32_F32(const GcnInst& inst);
     void V_CVT_OFF_F32_I4(const GcnInst& inst);
@@ -245,7 +246,7 @@ public:
     void V_MOVRELSD_B32(const GcnInst& inst);
 
     // VOPC
-    void V_CMP_F32(ConditionOp op, bool set_exec, const GcnInst& inst);
+    void V_CMP_F32(ConditionOp op, bool set_exec, const GcnInst& inst, bool f16 = false);
     void V_CMP_F64(ConditionOp op, bool set_exec, const GcnInst& inst);
     void V_CMP_U32(ConditionOp op, bool is_signed, bool set_exec, const GcnInst& inst);
     void V_CMP_U64(ConditionOp op, bool is_signed, bool set_exec, const GcnInst& inst);
@@ -292,6 +293,7 @@ public:
     void V_MIN3_F16(const GcnInst& inst);
     void V_MAX3_F16(const GcnInst& inst);
     void V_MED3_F16(const GcnInst& inst);
+    void V_MAD_F16(const GcnInst& inst);
     void V_ADD3_U32(const GcnInst& inst);
     void V_LSHL_OR_B32(const GcnInst& inst);
     void V_AND_OR_B32(const GcnInst& inst);

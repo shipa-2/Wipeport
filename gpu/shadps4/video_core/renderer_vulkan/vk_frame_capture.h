@@ -44,6 +44,11 @@ public:
     /// Contents of a bound buffer (first 1 KiB), kept for small passes and a pass's first draw.
     static void Buffer(u64 stage_hash, u32 slot, VAddr address, const void* data, u64 size);
     static void Note(const char* text);
+    /// bbport: whether a frame is being recorded and BB_CAPTURE_IMAGES (guest addresses,
+    /// comma separated) names this render target: its contents are written after each draw
+    /// into it (Rasterizer::CaptureTargetContents), as <BB_CAPTURE_DIR>/dNNNN_<address>_...raw.
+    static bool WantsContents(VAddr address, u64 ps_hash = 0);
+    static std::string ContentsPath(VAddr address, u32 width, u32 height, u32 bits);
 
 private:
     enum : u32 { Idle, Armed, Recording };

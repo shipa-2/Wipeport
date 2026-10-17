@@ -45,6 +45,17 @@ void runtime_set_main_tls(const void *data, uint64_t filesz, uint64_t memsz, uin
 void runtime_thread_attach_main(void);
 int32_t *runtime_errno(void);
 uintptr_t runtime_sema_resolve(const char *name);
+uintptr_t runtime_evf_resolve(const char *name);
+void runtime_evf_report(void);
+/* Module information (runtime_module.c): out/modules.bin, offsets into the image. */
+int runtime_modules_load(const char *path, unsigned char *image);
+uintptr_t runtime_module_resolve(const char *name);
+/* Where a linked module ("libc.prx") starts in memory, 0 when it is not linked. */
+uintptr_t runtime_module_base(const char *name);
+/* A system service event for the title (runtime_services.c; the VR runtime raises them). */
+void runtime_push_system_event(const void *event, size_t size);
+/* libc's __progname (runtime_kernel.c). */
+extern const char *runtime_progname;
 void runtime_sema_report(void);
 unsigned runtime_sema_waiters(uint32_t id);
 uintptr_t runtime_time_resolve(const char *name);
@@ -53,6 +64,11 @@ uintptr_t runtime_content_resolve(const char *name);
 void runtime_content_report(void);
 typedef struct { const char *name; void *function; } RuntimeExport;
 #define RUNTIME_LOOKUP(table, nid) runtime_lookup(table, sizeof(table)/sizeof(*(table)), nid)
+/* Import names are "NID#library" (scripts/link_modules.py writes the library's name, the same
+ * in every game). The two-letter spelling "NID#q#q" of Bloodborne's eboot (its own indices into
+ * its library table) is still read, through that eboot's table (runtime.c LEGACY_LIBRARIES).
+ * Whether an import is the given "NID#library": */
+int runtime_import_is(const char *scoped, const char *nid_library);
 const char *runtime_symbol(const char *nid);
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *nid);
 uintptr_t runtime_kernel_resolve(const char *name);

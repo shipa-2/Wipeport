@@ -40,6 +40,17 @@ class Runtime;
 
 class Rasterizer {
 public:
+    /// A headset frame (Presenter::PresentHmdFrame): the frame boundary in VR, see NoteFrameStart.
+    void NoteHeadsetFrame() {
+        NoteFrameStart();
+    }
+    /// A flip: the frame boundary of games without the port's camera motion (Bloodborne's is
+    /// its display pass).
+    void NoteFlip() {
+        if (!camera_motion->Enabled()) {
+            NoteFrameStart();
+        }
+    }
     explicit Rasterizer(const Instance& instance, Scheduler& scheduler, Runtime& runtime,
                         AmdGpu::Liverpool* liverpool);
     ~Rasterizer();
@@ -314,9 +325,11 @@ private:
         RenderState state;
         u32 scene_size = 0;
         std::array<float, 2> target_scale{};
+        u64 backing_swaps = 0; ///< Runtime::BackingSwaps() when recorded
     } begin_memo;
     u64 begin_memo_hits = 0, begin_memo_misses = 0;
     void Resolve();
+    void CaptureTargetContents(VideoCore::Image& image, u64 ps_hash); ///< bbport: BB_CAPTURE_IMAGES/PS
     void DepthStencilCopy(bool is_depth, bool is_stencil);
     void EliminateFastClear();
 

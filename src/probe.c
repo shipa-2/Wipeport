@@ -18,6 +18,9 @@
 #include <malloc.h>
 #include <unistd.h>
 #include <signal.h>
+#ifndef _WIN32
+#include <sys/prctl.h>
+#endif
 #include <ucontext.h>
 #include <fcntl.h>
 #include <dlfcn.h>
@@ -386,6 +389,8 @@ int main(int argc, char **argv) {
     SYSTEM_INFO system_info; GetSystemInfo(&system_info); page_size = system_info.dwPageSize;
 #else
     page_size = (size_t)sysconf(_SC_PAGESIZE);
+    /* BB_PTRACE_ANY: a debugger may attach (kernel.yama.ptrace_scope=1 lets only parents). */
+    if (getenv("BB_PTRACE_ANY")) prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY, 0, 0, 0);
     struct sigaction sa = {0}; sa.sa_sigaction = fault; sa.sa_flags = SA_SIGINFO;
     sigemptyset(&sa.sa_mask);
     sigaction(SIGSEGV, &sa, NULL); sigaction(SIGILL, &sa, NULL); sigaction(SIGBUS, &sa, NULL);
@@ -499,7 +504,7 @@ int main(int argc, char **argv) {
     if (fread(image, 1, size, f) != size || fgetc(f) != EOF) fail("incorrect memory image size");
     fclose(f);
     if (!cpu_only) {
-        char title[128]="Bloodborne", serial[16]="UNKNOWN", sfo[4096];
+        char title[128]="bbport", serial[16]="UNKNOWN", sfo[4096];
         uint32_t attributes=0;
         snprintf(sfo,sizeof(sfo),"%s/sce_sys/param.sfo",app0 ? app0 : ".");
         sfo_value(sfo,"TITLE",title,sizeof(title),NULL);
@@ -564,6 +569,13 @@ int main(int argc, char **argv) {
         runtime_set_main_tls(image+main_tls[0],main_tls[1],main_tls[2],main_tls[3]);
         runtime_thread_attach_main();
         runtime_set_procparam(image+procparam);
+        /* Module information beside the image (scripts/link_modules.py): optional. */
+        {
+            char modules_path[4096];
+            const char *slash=strrchr(argv[1],'/');
+            snprintf(modules_path,sizeof(modules_path),"%.*smodules.bin",slash ? (int)(slash-argv[1]+1) : 0,argv[1]);
+            if (runtime_modules_load(modules_path,image)) printf("Runtime: no module information (%s)\n",modules_path);
+        }
         /* Dependencies start in link order (libc first), as the PS4 dynamic linker does. */
         for (uint64_t m=0;m<module_count;++m) {
             printf("Starting linked module %" PRIu64 " at image offset 0x%" PRIx64 "; native bindings=%" PRIu64 "\n",m,modules[m].init,nb);

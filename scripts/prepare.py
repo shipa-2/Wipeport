@@ -14,6 +14,7 @@ import struct
 import sys
 
 import game_check
+import games
 
 
 def span(data, offset, size):
@@ -159,7 +160,7 @@ def prepare(game, out):
         if p['filesz'] > p['memsz']:
             raise ValueError('segment file size exceeds memory size')
         image[p['vaddr']:p['vaddr'] + p['filesz']] = span(elf, p['offset'], p['filesz'])
-    # bbport: only the supported executable runs (game_check.py); others fail in the game's code.
+    # Only the supported executables run (game_check.py, games.py); others fail in the game's code.
     if found := game_check.problem(game, hashlib.sha256(image).hexdigest()):
         raise GameCheckError(game_check.explain(*found))
     dp = next(p for p in ph if p['type'] == 2)
@@ -251,10 +252,10 @@ def prepare(game, out):
     (out / 'entry.bin').write_bytes(image[:1024])
     resources = collections.Counter()
     total_bytes = 0
-    for path in (game / 'dvdroot_ps4').rglob('*'):
-        if path.is_file():
-            resources[path.relative_to(game / 'dvdroot_ps4').parts[0]] += 1
-            total_bytes += path.stat().st_size
+    title_game = games.game_for(game)
+    for path in games.data_files(game, title_game):
+        resources[path.relative_to(game / title_game.data_root).parts[0]] += 1
+        total_bytes += path.stat().st_size
     report = dict(source_sha256=hashlib.sha256(source).hexdigest(), source_bytes=len(source),
                   sfo=sfo((game / 'sce_sys/param.sfo').read_bytes()), entry=hex(header[4]),
                   image_bytes=size, program_headers=ph, self_segments=segments,

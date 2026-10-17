@@ -12,6 +12,8 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import games
+
 EBOOT_BASE=0x400000
 # BB_FPS presets: patch names from patches/Bloodborne.xml (app version 01.09).
 # Above 60 FPS the sprint fix always goes with the frame rate patch: without it sprinting drops to
@@ -256,13 +258,12 @@ def compile_patches(xml, names, app_version, segments):
     return writes
 
 
-# Third-party patch files (shadPS4/GoldHEN XML) in the data directory's patches/ folder.
-# The retail releases (scripts/game_check.py SUPPORTED_TITLES): one 1.09 executable.
-BLOODBORNE_IDS={'CUSA00900','CUSA00207','CUSA00208','CUSA00299','CUSA01363',
-                'CUSA03179','CUSA03173','CUSA03014','CUSA03023'}
+# Third-party patch files (shadPS4/GoldHEN XML) in the data directory's patches/ folder, for the
+# game's serials (games.py).
+BLOODBORNE_IDS=set(games.BLOODBORNE.serials)
 
 
-def external_patches(directory, app_version='01.09', exclude=Path(__file__).resolve().parent.parent/'patches/Bloodborne.xml'):
+def external_patches(directory, app_version='01.09', exclude=Path(__file__).resolve().parent.parent/'patches/Bloodborne.xml', ids_wanted=BLOODBORNE_IDS):
     """[(key, file, metadata)] of eboot patches for this version in directory/*.xml.
     key is "<file name>/<patch name>" (the launcher's selection, patches.json)."""
     found=[]
@@ -275,7 +276,7 @@ def external_patches(directory, app_version='01.09', exclude=Path(__file__).reso
             print(f'Patches: {path.name}: {error}',file=sys.stderr)
             continue
         ids={e.text.strip() for e in root.iter('ID') if e.text}
-        if ids and not ids&BLOODBORNE_IDS: continue
+        if ids and not ids&set(ids_wanted): continue
         for meta in root.iter('Metadata'):
             if meta.get('AppVer')==app_version and meta.get('AppElf','eboot.bin')=='eboot.bin':
                 found.append((f'{path.name}/{meta.get("Name")}',path,meta))
@@ -313,6 +314,14 @@ def compile_external(selected, segments):
     return writes
 
 
+def write_patches(out, writes):
+    # BBPATCH2: the patch base, so the loader can rebase pointers the patches write into
+    # relocated slots (60/90 FPS++ replace function pointers).
+    blob=struct.pack('<8sQQ',b'BBPATCH2',EBOOT_BASE,len(writes))
+    for offset,data in writes: blob+=struct.pack('<QQ',offset,len(data))+data
+    (out/'patches.bin').write_bytes(blob)
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--patches-dir',type=Path,help='third-party patch XML files (shadPS4 format)')
@@ -323,13 +332,20 @@ def main():
     p.add_argument('--app-version',default='01.09')
     p.add_argument('--out',type=Path,default=Path(__file__).resolve().parent.parent/'out')
     p.add_argument('--settings',type=Path,default=Path(__file__).resolve().parent.parent/'bbport.ini')
-    p.add_argument('--game-dir',type=Path,default=Path(os.environ.get('BB_GAME_DIR','../CUSA03173')))
+    p.add_argument('--game-dir',type=Path,default=Path(os.environ.get('BB_GAME_DIR','../CUSA05670')))
     p.add_argument('--render-res',default='',help='render resolution WxH (overrides the preset)')
     p.add_argument('--print-preset-size',action='store_true',help='print the selected preset size, if reduced')
     p.add_argument('--output-res',default='',help='output resolution WxH (the upscaler\'s; the UI stays 1920x1080)')
     p.add_argument('--print-scaled',action='store_true',
                    help='print "RENDER OUTPUT" (WxH) when bbport.ini selects an output other than 1080p')
+    p.add_argument('--print-env',action='store_true',
+                   help='print the environment run.sh sets for this game (VAR=value lines)')
     a=p.parse_args()
+    if a.print_env:
+        if games.game_for(a.game_dir) is games.WIPEOUT:
+            import wipeout_patches
+            print('\n'.join(wipeout_patches.environment(read_settings(a.settings),os.environ)))
+        return
     if a.print_scaled:
         sizes=scaled_sizes(read_settings(a.settings))
         if sizes: print(f'{sizes[0][0]}x{sizes[0][1]} {sizes[1][0]}x{sizes[1][1]}')
@@ -342,6 +358,24 @@ def main():
             settings['preset']=os.environ['BB_UPSCALE_PRESET']
         size=render_size(settings)
         if size: print(f'{size[0]}x{size[1]}')
+        return
+    game=games.game_for(a.game_dir)
+    if game.patches is None:
+        # No built-in patch file for this game yet (WipEout): only third-party patches for its
+        # serials and version, and the --extra names are not available.
+        eboot=(a.out/'eboot.elf').read_bytes()
+        segments=eboot_segments(eboot)
+        writes=[]
+        notes=[]
+        if game is games.WIPEOUT:
+            import wipeout_patches
+            writes,notes=wipeout_patches.writes(eboot,segments,wipeout_patches.settings_from(
+                read_settings(a.settings),os.environ))
+        if a.patches_dir:
+            writes+=compile_external(external_selection(external_patches(
+                a.patches_dir,game.version,ids_wanted=game.serials),a.patches_config),segments)
+        write_patches(a.out,writes)
+        print(f'Patches: {game.name}: {"; ".join(notes) or "no built-in patches"}; {len(writes)} writes')
         return
     names=FPS_PRESETS[a.fps]+[n.strip() for n in a.extra.split(';') if n.strip()]
     names+=[n for n in effect_patches(read_settings(a.settings)) if n not in names]
@@ -368,11 +402,7 @@ def main():
         # After the built-in ones: an external patch of the same bytes wins.
         writes+=compile_external(external_selection(external_patches(a.patches_dir,a.app_version,a.xml),
                                                     a.patches_config),segments)
-    # BBPATCH2: the patch base, so the loader can rebase pointers the patches write into
-    # relocated slots (60/90 FPS++ replace function pointers).
-    blob=struct.pack('<8sQQ',b'BBPATCH2',EBOOT_BASE,len(writes))
-    for offset,data in writes: blob+=struct.pack('<QQ',offset,len(data))+data
-    (a.out/'patches.bin').write_bytes(blob)
+    write_patches(a.out,writes)
     print(f'Patches: FPS preset {a.fps}; {len(writes)} writes from {names or "none"}')
 
 

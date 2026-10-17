@@ -1,3 +1,4 @@
+#include <cstdio>
 // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -362,6 +363,10 @@ s32 sceVideoOutSubmitEopFlip(s32 handle, u32 buf_id, u32 mode, s64 flip_arg, voi
 s32 PS4_SYSV_ABI sceVideoOutGetDeviceCapabilityInfo(
     s32 handle, SceVideoOutDeviceCapabilityInfo* pDeviceCapabilityInfo) {
     pDeviceCapabilityInfo->capability = 0;
+    // bbport (AstroQuest): with a headset (SteamVR, through OpenXR) the title may draw for it.
+    if (Core::Vr::Runtime::Instance().IsHeadsetConnected()) {
+        pDeviceCapabilityInfo->capability |= ORBIS_VIDEO_OUT_DEVICE_CAPABILITY_VR_VIEW;
+    }
     if (presenter->IsHDRSupported()) {
         auto& game_info = Common::ElfInfo::Instance();
         if (game_info.GetPSFAttributes().support_hdr) {
@@ -461,6 +466,31 @@ s32 PS4_SYSV_ABI sceVideoOutSubmitChangeBufferAttribute(s32 handle, s32 attribut
 
 s32 PS4_SYSV_ABI sceVideoOutSetWindowModeMargins(s32 handle, s32 top, s32 bottom) {
     LOG_ERROR(Lib_VideoOut, "(STUBBED) called top = {}, bottom = {}", top, bottom);
+    return ORBIS_OK;
+}
+
+s32 SubmitHmdFrame(s32 handle, const HmdFrame& frame) {
+    auto* port = driver->GetPort(handle);
+    if (!port || !port->is_open) {
+        return ORBIS_VIDEO_OUT_ERROR_INVALID_HANDLE;
+    }
+    driver->SubmitHmdFrame(frame);
+    return ORBIS_OK;
+}
+
+s32 SubmitHmdFlip(s32 handle, s32 index, s64 flip_arg) {
+    auto* port = driver->GetPort(handle);
+    if (!port || !port->is_open) {
+        return ORBIS_VIDEO_OUT_ERROR_INVALID_HANDLE;
+    }
+    // As the PS4's reprojection: flip status, flip events and the buffers' labels go on, at
+    // the refresh itself (the headset's picture goes through PresentHmdFrame, not this flip).
+    // Not before the GPU thread has read the title's command buffers for the last frame: the
+    // flip releases its buffers (labels), and the title would rewrite commands not read yet.
+    if (driver->HmdFramePending()) {
+        return ORBIS_OK; // this refresh shows the previous frame again
+    }
+    driver->HmdFlip(port, index, flip_arg);
     return ORBIS_OK;
 }
 

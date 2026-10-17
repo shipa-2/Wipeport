@@ -1,0 +1,62 @@
+from paths import ROOT
+import struct
+import unittest
+
+import wipeout_patches as wp
+
+SITES = (wp.VR_SCALE_TABLE, wp.VR_DYNRES_BRANCH, wp.VR_FLIP_INTERVAL)
+
+
+def fake_eboot():
+    """A file with the patch sites' original bytes at their file offsets (vaddr + 0x4000)."""
+    end = max(address + len(original) for address, original in SITES) + 0x4000
+    data = bytearray(end)
+    for address, original in SITES:
+        data[address + 0x4000:address + 0x4000 + len(original)] = original
+    return bytes(data), [(0, end)]
+
+
+class WipeoutPatches(unittest.TestCase):
+    def options(self, **values):
+        return {'vr_scale': '', 'vr_dynres': '1', 'vr_fps': '60', **values}
+
+    def test_defaults_change_nothing(self):
+        eboot, segments = fake_eboot()
+        self.assertEqual(wp.writes(eboot, segments, self.options()), ([], []))
+
+    def test_vr_options(self):
+        eboot, segments = fake_eboot()
+        out, notes = wp.writes(eboot, segments,
+                               self.options(vr_scale='2', vr_dynres='0', vr_fps='120'))
+        writes = dict(out)
+        self.assertEqual(writes[wp.VR_SCALE_TABLE[0]], struct.pack('<ff', 2.0, 2.0))
+        self.assertEqual(writes[wp.VR_DYNRES_BRANCH[0]], b'\x90\x90')
+        # mov r14b, 1 and a 4-byte NOP: the 7 bytes of the load it replaces.
+        self.assertEqual(writes[wp.VR_FLIP_INTERVAL[0]], bytes.fromhex('41b6010f1f4000'))
+        self.assertIn('VR eyes 1920x2160 (scale 2)', notes)
+
+    def test_other_executable_refused(self):
+        eboot, segments = fake_eboot()
+        eboot = bytearray(eboot)
+        eboot[wp.VR_DYNRES_BRANCH[0] + 0x4000] ^= 0xFF
+        with self.assertRaises(ValueError):
+            wp.writes(bytes(eboot), segments, self.options(vr_dynres='0'))
+
+    def test_bad_values(self):
+        eboot, segments = fake_eboot()
+        for options in (self.options(vr_fps='90'), self.options(vr_scale='9')):
+            with self.assertRaises(ValueError):
+                wp.writes(eboot, segments, options)
+
+    def test_settings_and_environment(self):
+        settings = {'vr_fps': '120', 'render_res': '2560x1440', 'fps_limit': '144'}
+        self.assertEqual(wp.settings_from(settings, {'BB_VR_FPS': '60'})['vr_fps'], '60')
+        self.assertEqual(wp.environment(settings, {}),
+                         ['BB_INTERNAL_WIDTH=2560', 'BB_INTERNAL_HEIGHT=1440', 'BB_FPS_LIMIT=144'])
+        # Explicit environment variables win over bbport.ini.
+        self.assertEqual(wp.environment(settings, {'BB_INTERNAL_WIDTH': '1920', 'BB_FPS_LIMIT': '0'}),
+                         [])
+
+
+if __name__ == '__main__':
+    unittest.main()

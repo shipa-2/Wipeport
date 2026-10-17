@@ -145,7 +145,8 @@ union Regs {
         LsHsConfig ls_hs_config;
         u32 vgt_gs_vert_itemsize[4];
         TessellationConfig tess_config;
-        INSERT_PADDING_WORDS(3);
+        AlphaToMask alpha_to_mask; // bbport: DB_ALPHA_TO_MASK (0xA2DC)
+        INSERT_PADDING_WORDS(2);
         PolygonOffset poly_offset;
         GsInstances vgt_gs_instance_cnt;
         StreamOutConfig vgt_strmout_config;

@@ -5,6 +5,7 @@
 // its code on the stack). Report() prints the sites whose live bytes grew since the last report:
 // what leaks when the guest heap runs out.
 #include "bbport_heap_sites.h"
+#include "game_profile.h"
 
 #include <algorithm>
 #include <atomic>
@@ -222,6 +223,11 @@ void InstallWrappers(bool counters) {
     }();
     static bool done = false;
     if ((!wanted && !counters) || done) {
+        return;
+    }
+    // Bloodborne 1.09's image layout (LibcBase): another executable's libc is elsewhere.
+    if (!Game::PortImageHooks()) {
+        done = true;
         return;
     }
     auto* slots = reinterpret_cast<u64*>(LibcBase);

@@ -1,7 +1,8 @@
 """Link the eboot with the game's bundled system modules into one probe image.
 
 Successor of link_libc.py for several modules (default: libc.prx, then
-libSceFios2.prx). Every module is placed after the previous one; imports of
+libSceFios2.prx, then the game's other bundled modules: WipEout ships libSceNpToolkit2.prx,
+whose C++ API would otherwise be the host's to implement). Every module is placed after the previous one; imports of
 all modules share one import table, so the C runtime can override any
 function (host contracts first) and otherwise binds the native export.
 
@@ -19,6 +20,13 @@ from prepare import parse_self, span, unpack
 from link_libc import encode_id
 
 DEFAULT_MODULES = ('libc.prx', 'libSceFios2.prx')
+
+
+def bundled_modules(game):
+    """DEFAULT_MODULES, then the other modules in the game's sce_module (sorted), those present."""
+    folder = Path(game) / 'sce_module'
+    others = sorted(p.name for p in folder.glob('*.prx') if p.name not in DEFAULT_MODULES)
+    return [name for name in DEFAULT_MODULES if (folder / name).is_file()] + others
 FS_LOAD = bytes.fromhex('64488b042500000000')  # mov rax, fs:[0]
 
 
@@ -89,6 +97,63 @@ def patch_fs_loads(image, ph, base):
     return patched
 
 
+def module_record(name, image, base, m, module_id):
+    """What sceKernelGetModuleInfo* report of a module (out/modules.bin): addresses relative to
+    the image. .eh_frame is found through PT_GNU_EH_FRAME's header and measured up to its
+    terminator."""
+    ph = m['ph']
+    loads = [p for p in ph if p['type'] in (1, 0x61000010)]
+    size = max(p['vaddr'] + p['memsz'] for p in loads)
+    hdr = next((p for p in ph if p['type'] == 0x6474e550), None)
+    eh_hdr = eh_hdr_size = eh = eh_size = 0
+    if hdr:
+        eh_hdr, eh_hdr_size = base + hdr['vaddr'], hdr['memsz']
+        version, encoding = image[eh_hdr], image[eh_hdr + 1]
+        field = eh_hdr + 4
+        fmt = {0x03: '<I', 0x0b: '<i', 0x04: '<Q', 0x0c: '<q'}.get(encoding & 0x0f)
+        if version == 1 and fmt and encoding & 0x70 in (0x00, 0x10):
+            value = struct.unpack_from(fmt, image, field)[0]
+            eh = field + value if encoding & 0x70 == 0x10 else base + value
+            segment = next((p for p in loads if p['vaddr'] <= eh - base < p['vaddr'] + p['memsz']), None)
+            end = base + segment['vaddr'] + segment['memsz'] if segment else eh
+            at = eh
+            while at + 4 <= end:
+                length = struct.unpack_from('<I', image, at)[0]
+                if length == 0:
+                    at += 4
+                    break
+                at += 4 + (12 + struct.unpack_from('<Q', image, at + 4)[0] if length == 0xffffffff else length)
+            eh_size = min(at, end) - eh
+    tls = next((p for p in ph if p['type'] == 7), None)
+    # ELF flags (R 4, W 2, X 1) as PS4 protection (read 1, write 2, execute 4).
+    prot = lambda flags: (1 if flags & 4 else 0) | (2 if flags & 2 else 0) | (4 if flags & 1 else 0)
+    segments = [(base + p['vaddr'], p['memsz'], prot(p['flags'])) for p in loads][:4]
+    # DT_INIT/DT_FINI 0 is an offset (the module's start), not "none".
+    return dict(name=name, base=base, size=size, init=base + m['tags'][12] if 12 in m['tags'] else 0,
+                fini=base + m['tags'][13] if 13 in m['tags'] else 0,
+                eh_frame_hdr=eh_hdr, eh_frame_hdr_size=eh_hdr_size, eh_frame=eh, eh_frame_size=eh_size,
+                tls_index=module_id, tls_init=base + tls['vaddr'] if tls else 0,
+                tls_init_size=tls['filesz'] if tls else 0, tls_size=tls['memsz'] if tls else 0,
+                tls_align=tls['align'] if tls else 0, segments=segments)
+
+
+def write_module_records(path, records):
+    """BBMODS01: count, then per module its name (256 bytes) and 13 u64 fields, the segment
+    count and 4 segments (address, size, PS4 protection: 1 read, 2 write, 4 execute)."""
+    with path.open('wb') as f:
+        f.write(struct.pack('<8sQ', b'BBMODS01', len(records)))
+        for r in records:
+            name = r['name'].encode()[:255]
+            f.write(name.ljust(256, b'\0'))
+            f.write(struct.pack('<13Q', r['base'], r['size'], r['init'], r['fini'], r['eh_frame_hdr'],
+                                r['eh_frame_hdr_size'], r['eh_frame'], r['eh_frame_size'], r['tls_index'],
+                                r['tls_init'], r['tls_init_size'], r['tls_size'], r['tls_align']))
+            segments = list(r['segments']) + [(0, 0, 0)] * (4 - len(r['segments']))
+            f.write(struct.pack('<Q', len(r['segments'])))
+            for segment in segments:
+                f.write(struct.pack('<3Q', *segment))
+
+
 def link(game, out, module_names=DEFAULT_MODULES):
     main = module(game / 'eboot.bin')
     raw = (out / 'boot.bin').read_bytes()
@@ -124,6 +189,7 @@ def link(game, out, module_names=DEFAULT_MODULES):
 
     exports, by_nid = {}, collections.defaultdict(list)
     table = []
+    records = [module_record('eboot.bin', image, 0, main, 1 if any(p['type'] == 7 for p in main['ph']) else 0)]
     base = (size + 65535) & ~65535
     fs_patched = patch_fs_loads(image, main['ph'], 0)
     tls_module = 2
@@ -190,6 +256,7 @@ def link(game, out, module_names=DEFAULT_MODULES):
                 by_nid[(s['identity'][0], s['identity'][1][0])].append(entry_value)
                 count += 1
         fs_patched += patch_fs_loads(image, m['ph'], base)
+        records.append(module_record(filename, image, base, m, module_id))
         table.append(dict(file=filename, base=base, size=modsize, init=base + m['tags'].get(12, 0),
                           tls_address=base + tls['vaddr'] if tls else 0, tls_memsz=tls['memsz'] if tls else 0,
                           tls_filesz=tls['filesz'] if tls else 0, tls_module=module_id,
@@ -213,6 +280,15 @@ def link(game, out, module_names=DEFAULT_MODULES):
                      or main_tls['vaddr'] + main_tls['filesz'] > size):
         raise ValueError('unsupported eboot TLS layout')
     procparam = next(p for p in main['ph'] if p['type'] == 0x61000001)
+    # The host sees "NID#library" (library names are the same in every game; the letters of the
+    # executable's own spelling are indices into its tables, another game numbers otherwise).
+    def canonical(name):
+        parts = name.split('#')
+        if len(parts) == 3 and parts[1] in main['libraries']:
+            return f"{parts[0]}#{main['libraries'][parts[1]][0]}"
+        return name
+    names = [canonical(name) for name in names]
+    unresolved = [canonical(name) for name in unresolved]
     with (out / 'boot-linked.bin').open('wb') as f:
         f.write(struct.pack('<8s6Q', b'BBPROBE5', len(image), entry, len(segments), len(relocs), len(names), flags))
         f.write(struct.pack('<Q', procparam['vaddr']))
@@ -233,6 +309,7 @@ def link(game, out, module_names=DEFAULT_MODULES):
         for relocation in relocs:
             f.write(struct.pack('<QQqq', *relocation))
         f.write(image)
+    write_module_records(out / 'modules.bin', records)
     report = dict(modules=[{k: (hex(v) if k in ('base', 'init', 'tls_address') else v) for k, v in t.items()} for t in table],
                   bindings=len(bindings), imports=len(names), fs_loads_patched=fs_patched,
                   main_tls=dict(zip(('vaddr', 'filesz', 'memsz', 'align'), main_tls_values)),
@@ -248,6 +325,6 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('game', type=Path)
     p.add_argument('--out', type=Path, default=Path(__file__).resolve().parent.parent / 'out')
-    p.add_argument('--modules', nargs='*', default=list(DEFAULT_MODULES))
+    p.add_argument('--modules', nargs='*', help='default: libc.prx, libSceFios2.prx, the other bundled modules')
     a = p.parse_args()
-    link(a.game, a.out, a.modules)
+    link(a.game, a.out, a.modules if a.modules is not None else bundled_modules(a.game))

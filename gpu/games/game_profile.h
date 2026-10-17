@@ -36,6 +36,15 @@ struct Profile {
     /// A compute shader (GCN program hash) that only copies buffers, into memory the translator
     /// reads on the CPU: its stores go through to the game's memory; 0 = none known.
     std::uint64_t buffer_copy_shader = 0;
+    /// The port's own hooks written for this executable's addresses: the settings pages in the
+    /// game's System menu (shim/bbport_game_menu.cpp), the wrappers on its libc's malloc
+    /// (bbport_heap_sites.cpp), the Gnm call census (bbport_gnm_hooks.cpp). Bloodborne 1.09's.
+    bool port_image_hooks = false;
+    /// The port's temporal upscaler (FSR/DLSS/TAA, vk_temporal_upscaler.cpp) and what feeds it
+    /// (camera and object motion, scene proxies) know this game's frame: where its scene, depth
+    /// and UI are. A game without it has its frame left as it draws it (as BB_UPSCALER=none):
+    /// placed in another frame, the upscaler replaced WipEout's scene with black.
+    bool scene_upscaler = false;
 };
 
 /// Chooses the profile for the game by its TITLE_ID (bbgpu_init). BB_GAME_PROFILE=none runs the
@@ -49,6 +58,18 @@ const Profile* Active();
 inline std::uint64_t BufferCopyShader() {
     const Profile* profile = Active();
     return profile ? profile->buffer_copy_shader : 0;
+}
+
+/// Whether the active profile has the port's executable-specific hooks (Profile::port_image_hooks).
+inline bool PortImageHooks() {
+    const Profile* profile = Active();
+    return profile && profile->port_image_hooks;
+}
+
+/// Whether the active profile's frame is known to the temporal upscaler (Profile::scene_upscaler).
+inline bool SceneUpscaler() {
+    const Profile* profile = Active();
+    return profile && profile->scene_upscaler;
 }
 
 /// Whether guest_rip is in code the active profile knows to write per-frame data.

@@ -48,6 +48,9 @@ ImageInfo::ImageInfo(const Libraries::VideoOut::BufferAttributeGroup& group,
     pitch = attrib.tiling_mode == TilingMode::Linear ? size.width : (size.width + 127) & (~127);
     num_bits = attrib.pixel_format != VideoOutFormat::A16R16G16B16Float ? 32 : 64;
     ASSERT(num_bits == 32);
+    // bbport: a PS4 Pro title renders its tiled display buffers with the Pro's alternate tile
+    // layout (CB_COLOR_INFO.ALT_TILE_MODE); the buffer is the same memory, sized alike.
+    alt_tile = props.is_tiled && Libraries::Kernel::sceKernelIsNeoMode();
 
     guest_address = cpu_address;
     UpdateSize();

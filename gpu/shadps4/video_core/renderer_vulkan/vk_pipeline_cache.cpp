@@ -739,6 +739,7 @@ bool PipelineCache::RefreshGraphicsKey(PipelineSelection& sel) {
         regs.stage_enable.hs_en ? regs.ls_hs_config.hs_input_control_points : 0;
     key.logic_op = regs.color_control.rop3;
     key.depth_samples = db_enabled ? regs.depth_buffer.NumSamples() : 1;
+    key.alpha_to_coverage = regs.alpha_to_mask.enable;
     key.num_samples = key.depth_samples;
     key.cb_shader_mask = regs.color_shader_mask;
 
@@ -883,6 +884,21 @@ bool PipelineCache::RefreshGraphicsKey(PipelineSelection& sel) {
         key.write_masks[mv] = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
                               vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
         key.color_samples[mv] = 1;
+    }
+
+    // bbport: colour attachments of one pass must have one sample count (Vulkan, without
+    // multisampledRenderToSingleSampled; the mixed-samples extensions only let colour differ from
+    // depth): WipEout's G-buffer pass has a 4x colour target with two 1x R16G16 targets
+    // (VUID-VkRenderingInfo-imageView-09429), and its opaque geometry was lost. They all get the
+    // largest count (their backings are swapped, Runtime::SetBackingSamples).
+    if (!all_color_samples_same) {
+        for (u32 cb = 0; cb < AmdGpu::NUM_COLOR_BUFFERS; ++cb) {
+            if (key.color_samples[cb]) {
+                key.color_samples[cb] = key.num_samples;
+            }
+        }
+        all_color_samples_same = true;
+        color_samples = key.num_samples;
     }
 
     // Force all color samples to match depth samples to avoid unsupported MSAA configuration

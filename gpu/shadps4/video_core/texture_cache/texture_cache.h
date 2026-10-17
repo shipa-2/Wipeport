@@ -126,6 +126,12 @@ public:
     /// Retrieves image whose address matches provided
     [[nodiscard]] ImageId FindImageFromRange(VAddr address, size_t size, bool ensure_valid = true);
 
+    /// bbport: a render target read as a constant or storage buffer: its contents go into the
+    /// game's memory first (DownloadImageMemory; Rasterizer::BindBuffers).
+    void DownloadForBufferRead(ImageId image_id) {
+        DownloadImageMemory(image_id);
+    }
+
     /// bbport: a FindView result remembered by the caller for the same image and view info.
     struct ViewMemo {
         ImageId image_id{};

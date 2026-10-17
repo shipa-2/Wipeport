@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <atomic>
+
 #include <deque>
 #include <functional>
 
@@ -94,6 +96,17 @@ public:
                               const BufferAttribute* attribute);
 
     bool SubmitFlip(VideoOutPort* port, s32 index, s64 flip_arg, bool is_eop = false);
+    /// bbport (AstroQuest): a frame for the headset, composed on the GPU thread in order with
+    /// the draws that made its eyes, then handed to the OpenXR host.
+    void SubmitHmdFrame(const HmdFrame& frame);
+    /// The reprojection's flip: completed at once, without a picture for the window.
+    void HmdFlip(VideoOutPort* port, s32 index, s64 flip_arg);
+    /// Whether the GPU thread has yet to take a headset frame submitted (with the title's
+    /// command buffers before it): the reprojection must not flip then.
+    bool HmdFramePending() const {
+        return hmd_taken.load(std::memory_order_acquire) <
+               hmd_submitted.load(std::memory_order_acquire);
+    }
 
 private:
     struct Request {
@@ -132,6 +145,8 @@ private:
     VideoOutPort main_port{};
     std::jthread present_thread;
     std::queue<Request> requests;
+    std::atomic<u64> hmd_submitted{0}; ///< SubmitHmdFrame calls
+    std::atomic<u64> hmd_taken{0};     ///< of them processed by the GPU thread
 };
 
 } // namespace Libraries::VideoOut

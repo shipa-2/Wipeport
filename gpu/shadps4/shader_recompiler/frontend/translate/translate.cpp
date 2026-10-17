@@ -1,3 +1,8 @@
+#include <optional>
+#include <cstdlib>
+#include <cstdio>
+#include <mutex>
+#include <set>
 // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -336,9 +341,56 @@ IR::VectorReg Translator::GetScratchVgpr(u32 offset) {
     return it->second;
 }
 
+namespace {
+// bbport: SDWA (GCN3, used by PS4 Pro shaders): the byte or word a selector picks out of a dword.
+struct SdwaField {
+    u32 offset;
+    u32 width;
+};
+std::optional<SdwaField> SdwaPart(SdwaSelector sel) {
+    switch (sel) {
+    case SdwaSelector::Byte0:
+    case SdwaSelector::Byte1:
+    case SdwaSelector::Byte2:
+    case SdwaSelector::Byte3:
+        return SdwaField{u32(sel) * 8, 8};
+    case SdwaSelector::Word0:
+        return SdwaField{0, 16};
+    case SdwaSelector::Word1:
+        return SdwaField{16, 16};
+    default:
+        return std::nullopt;
+    }
+}
+} // namespace
+
 template <typename T>
 T Translator::GetSrc(const InstOperand& operand) {
     constexpr bool is_float = std::is_same_v<T, IR::F32>;
+
+    // SDWA source selection: the selected bits, zero or sign extended, as the operand.
+    if (const auto part = SdwaPart(operand.sdwa_sel);
+        part && (operand.field == OperandField::VectorGPR ||
+                 operand.field == OperandField::ScalarGPR)) {
+        const IR::U32 raw = operand.field == OperandField::VectorGPR
+                                ? ir.GetVectorReg<IR::U32>(IR::VectorReg(operand.code))
+                                : ir.GetScalarReg<IR::U32>(IR::ScalarReg(operand.code));
+        const IR::U32 bits = ir.BitFieldExtract(raw, ir.Imm32(part->offset),
+                                                ir.Imm32(part->width),
+                                                operand.input_modifier.sext);
+        if constexpr (is_float) {
+            IR::F32 value = ir.BitCast<IR::F32>(bits);
+            if (operand.input_modifier.abs) {
+                value = ir.FPAbs(value);
+            }
+            if (operand.input_modifier.neg) {
+                value = ir.FPNeg(value);
+            }
+            return value;
+        } else {
+            return bits;
+        }
+    }
 
     const auto get_imm = [&](auto value) -> T {
         if constexpr (is_float) {
@@ -505,7 +557,9 @@ T Translator::GetSrc16(const InstOperand& operand) {
         }
     };
 
-    const auto op_sel = operand.op_sel.op_sel;
+    // SDWA WORD_1 picks the high half, as op_sel does.
+    const auto op_sel =
+        operand.op_sel.op_sel || operand.sdwa_sel == SdwaSelector::Word1;
 
     T value{};
     switch (operand.field) {
@@ -575,6 +629,15 @@ T Translator::GetSrc16(const InstOperand& operand) {
         } else {
             value = cast(IR::F32{ir.CompositeExtract(
                 ir.Unpack2x16(number_format, bitcast_to_u(ir.GetVccLo())), op_sel ? 1 : 0)});
+        }
+        break;
+    case OperandField::VccHi:
+        if constexpr (is_float) {
+            value = IR::F32{
+                ir.CompositeExtract(ir.Unpack2x16(number_format, ir.GetVccHi()), op_sel ? 1 : 0)};
+        } else {
+            value = cast(IR::F32{ir.CompositeExtract(
+                ir.Unpack2x16(number_format, bitcast_to_u(ir.GetVccHi())), op_sel ? 1 : 0)});
         }
         break;
     default:
@@ -939,6 +1002,9 @@ pk_type<T> Translator::GetSrcPk(const InstOperand& operand) {
     case OperandField::VccLo:
         value = extract(ir.GetVccLo());
         break;
+    case OperandField::VccHi:
+        value = extract(ir.GetVccHi());
+        break;
     default:
         UNREACHABLE_MSG("Unexpected operand: {}", std::to_underlying(operand.field));
     }
@@ -974,6 +1040,25 @@ void Translator::SetDst(const InstOperand& operand, const IR::U32F32& value) {
         if (operand.output_modifier.clamp) {
             result = ir.FPSaturate(result);
         }
+    }
+
+    // SDWA destination selection: the result's low bits into the selected part; the rest of
+    // the register zeroed, kept or filled with the sign.
+    if (const auto part = SdwaPart(operand.sdwa_sel);
+        part && operand.field == OperandField::VectorGPR) {
+        const IR::U32 bits =
+            result.Type() == IR::Type::F32 ? ir.BitCast<IR::U32>(IR::F32{result}) : IR::U32{result};
+        const IR::U32 offset = ir.Imm32(part->offset), width = ir.Imm32(part->width);
+        IR::U32 out;
+        if (operand.sdwa_dst == SdwaDstUnused::Preserve) {
+            const auto prev = ir.GetVectorReg<IR::U32>(IR::VectorReg(operand.code));
+            out = IR::U32{ir.BitFieldInsert(prev, bits, offset, width)};
+        } else {
+            const bool sext = operand.sdwa_dst == SdwaDstUnused::Sext;
+            out = IR::U32{ir.ShiftLeftLogical(ir.BitFieldExtract(bits, ir.Imm32(0), width, sext),
+                                              offset)};
+        }
+        return ir.SetVectorReg(IR::VectorReg(operand.code), out);
     }
 
     switch (operand.field) {
@@ -1022,7 +1107,18 @@ void Translator::SetDst16(const InstOperand& operand, const IR::U32F32& value) {
         }
     };
 
-    const auto op_sel = operand.op_sel.op_sel;
+    const auto op_sel =
+        operand.op_sel.op_sel || operand.sdwa_sel == SdwaSelector::Word1;
+    // SDWA with the unused half zeroed or sign filled instead of kept.
+    if (operand.field == OperandField::VectorGPR &&
+        (operand.sdwa_dst == SdwaDstUnused::Pad || operand.sdwa_dst == SdwaDstUnused::Sext) &&
+        SdwaPart(operand.sdwa_sel)) {
+        const bool sext = operand.sdwa_dst == SdwaDstUnused::Sext;
+        const IR::U32 half =
+            ir.BitFieldExtract(cast(result), ir.Imm32(0), ir.Imm32(16), sext);
+        return ir.SetVectorReg(IR::VectorReg(operand.code),
+                               IR::U32{ir.ShiftLeftLogical(half, ir.Imm32(op_sel ? 16 : 0))});
+    }
 
     switch (operand.field) {
     case OperandField::ScalarGPR: {
@@ -1206,8 +1302,25 @@ void Translator::Translate(IR::Block* block, u32 start_pc, IR::Condition cond,
     }
     ir = IR::IREmitter{*block, block->begin()};
     pc = start_pc;
+    // BB_OPCODE_STATS=1 (diagnostics): every opcode the first time a shader uses it, with the
+    // shader; also whether it came with SDWA or DPP.
+    static const bool opcode_stats = std::getenv("BB_OPCODE_STATS") != nullptr;
     for (const auto& inst : inst_list) {
         pc += inst.length;
+        if (opcode_stats) {
+            static std::mutex seen_mutex;
+            static std::set<std::string> seen;
+            const bool sdwa = inst.src[0].sdwa_sel != SdwaSelector::Invalid ||
+                              inst.dst[0].sdwa_dst != SdwaDstUnused::Invalid;
+            const bool dpp = inst.src[0].dpp.has_value();
+            const std::string key = fmt::format("{}{}{}", magic_enum::enum_name(inst.opcode),
+                                                sdwa ? " sdwa" : "", dpp ? " dpp" : "");
+            std::scoped_lock lock{seen_mutex};
+            if (seen.insert(key).second) {
+                std::fprintf(stderr, "Opcode: %s (pgm %016llx)\n", key.c_str(),
+                             (unsigned long long)info.pgm_hash);
+            }
+        }
 
         // Special case for emitting fetch shader.
         if (inst.opcode == Opcode::S_SWAPPC_B64) {
@@ -1254,7 +1367,9 @@ void Translator::TranslateInstruction(const GcnInst& inst) {
     case InstCategory::DebugProfile:
         break;
     default:
-        UNREACHABLE();
+        UNREACHABLE_MSG("Unknown instruction: opcode {} ({}), category {}, encoding {}",
+                        magic_enum::enum_name(inst.opcode), u32(inst.opcode),
+                        u32(inst.category), u32(inst.encoding));
     }
 }
 

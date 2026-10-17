@@ -737,6 +737,27 @@ void Runtime::SetBackingSamples(VideoCore::Image* image, u32 num_samples, bool c
     if (it == backing_images.end()) {
         auto new_image_ci = backing->image.image_ci;
         new_image_ci.samples = LiverpoolToVK::NumSamples(num_samples, image->supported_samples);
+        // bbport: the image's sample counts were asked with storage usage, which a driver may
+        // not allow multisampled (RADV: B10G11R11 4x): the backing then got one sample while the
+        // title's shaders read its samples (WipEout's 4x MSAA scene read black). A multisampled
+        // backing is never written as storage: without that usage it keeps its samples.
+        const auto wanted = LiverpoolToVK::RawNumSamples(num_samples);
+        if (num_samples > 1 && new_image_ci.samples != wanted &&
+            (new_image_ci.usage & vk::ImageUsageFlagBits::eStorage)) {
+            const vk::PhysicalDeviceImageFormatInfo2 msaa_info{
+                .format = new_image_ci.format,
+                .type = new_image_ci.imageType,
+                .tiling = new_image_ci.tiling,
+                .usage = new_image_ci.usage & ~vk::ImageUsageFlagBits::eStorage,
+                .flags = new_image_ci.flags,
+            };
+            const auto properties = instance.GetPhysicalDevice().getImageFormatProperties2(msaa_info);
+            if (properties.result == vk::Result::eSuccess &&
+                (properties.value.imageFormatProperties.sampleCounts & wanted)) {
+                new_image_ci.usage &= ~vk::ImageUsageFlagBits::eStorage;
+                new_image_ci.samples = wanted;
+            }
+        }
 
         new_backing = &backing_images.emplace_back();
         new_backing->num_samples = num_samples;
@@ -798,6 +819,7 @@ void Runtime::SetBackingSamples(VideoCore::Image* image, u32 num_samples, bool c
     }
 
     backing = new_backing;
+    ++backing_swaps;
 }
 
 bool Runtime::IsBufferAccessed(const VideoCore::Buffer* handle, u64 offset, u64 size,

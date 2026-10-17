@@ -39,6 +39,8 @@ extern const Profile BloodborneProfile = {
     .dynamic_writers = DynamicWriters,
     // The game's buffer-copy compute shader (not the export-stage copy shader).
     .buffer_copy_shader = 0xfefebf9f,
+    .port_image_hooks = true,
+    .scene_upscaler = true,
 };
 
 } // namespace Game

@@ -261,8 +261,12 @@ static ABI int32_t audio_last_time(int32_t handle, uint64_t *time) {
     *time=p->last_output_us; return 0;
 }
 
+/* The mastering stage (limiter, loudness) is the host mixer's: accepted, not applied. */
+static ABI int32_t audio_mastering(void) { return 0; }
 static const RuntimeExport exports[]={
     {"sceAudioOutInit",audio_init}, {"sceAudioOutOpen",audio_open}, {"sceAudioOutClose",audio_close},
+    {"sceAudioOutMasteringInit",audio_mastering}, {"sceAudioOutMasteringSetParam",audio_mastering},
+    {"sceAudioOutMasteringTerm",audio_mastering},
     {"sceAudioOutOutput",audio_output}, {"sceAudioOutOutputs",audio_outputs},
     {"sceAudioOutSetVolume",audio_volume}, {"sceAudioOutGetPortState",audio_state},
     {"sceAudioOutGetLastOutputTime",audio_last_time},

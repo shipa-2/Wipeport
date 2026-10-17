@@ -80,6 +80,7 @@ vk::Format DepthFormat(AmdGpu::DepthBuffer::ZFormat z_format,
 
 vk::ClearValue ColorBufferClearValue(const AmdGpu::ColorBuffer& color_buffer);
 
+vk::SampleCountFlagBits RawNumSamples(u32 num_samples);
 vk::SampleCountFlagBits NumSamples(u32 num_samples, vk::SampleCountFlags supported_flags);
 
 static inline bool IsFormatDepthCompatible(vk::Format fmt) {

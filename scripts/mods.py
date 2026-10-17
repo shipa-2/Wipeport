@@ -9,14 +9,15 @@ import shutil
 import sys
 import tempfile
 
+import games
+
 # Top-level folders of the game's dvdroot_ps4: a mod made of these is a dvdroot_ps4 itself (adhoc:
 # the debug menu's fonts, which the retail game does not ship).
 GAME_FOLDERS = {'action', 'adhoc', 'chr', 'event', 'facegen', 'font', 'map', 'menu', 'movie', 'msg', 'mtd',
                 'obj', 'other', 'param', 'paramdef', 'parts', 'remo', 'script', 'sfx', 'shader',
                 'sound'}
-# The retail releases' folder names (game_check.py SUPPORTED_TITLES), as a mod's wrapper folder.
-SERIALS = ('CUSA03173', 'CUSA00900', 'CUSA00207', 'CUSA00208', 'CUSA00299', 'CUSA01363',
-           'CUSA03179', 'CUSA03014', 'CUSA03023')
+# The known games' folder names (games.py), as a mod's wrapper folder.
+SERIALS = tuple(serial for game in games.GAMES for serial in game.serials)
 
 
 def child(folder, name):

@@ -59,7 +59,10 @@ def module(path):
         n, info, other, section, value, size = unpack('<IBBHQQ', table, pos)
         name = string(n)
         symbols.append(dict(name=name, type=info & 15, binding=info >> 4, section=section,
-                            value=value, size=size, identity=identity(name) if name else None))
+                            value=value, size=size,
+                            # Plain names (section markers such as __start__Ztext in newer SDKs'
+                            # libc) are local: neither imported nor exported by NID.
+                            identity=identity(name) if '#' in name else None))
     relocations = []
     for ot, st in ((0x61000029, 0x6100002d), (0x6100002f, 0x61000031)):
         table = span(blob, tags[ot], tags[st])

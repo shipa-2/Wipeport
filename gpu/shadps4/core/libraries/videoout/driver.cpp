@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <atomic>
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -42,6 +43,8 @@ namespace Vulkan {
 extern std::atomic<u64> g_bb_compile_ns;
 extern std::atomic<u32> g_bb_compiles;
 } // namespace Vulkan
+
+namespace Libraries::Hmd { void OnVblank(); } // hmd_reprojection.cpp
 
 namespace Libraries::VideoOut {
 
@@ -809,6 +812,50 @@ bool VideoOutDriver::SubmitFlip(VideoOutPort* port, s32 index, s64 flip_arg,
     return true;
 }
 
+void VideoOutDriver::SubmitHmdFrame(const HmdFrame& hmd_frame) {
+    // Where the head was for it is worked out here and now: the seat the title's pose was
+    // counted from may be another by the time the GPU thread gets to the frame.
+    HmdFrame frame = hmd_frame;
+    frame.render_pose = Core::Vr::Runtime::Instance().ToHostSpace(hmd_frame.render_pose);
+    const u32 frame_id = Core::Vr::Runtime::Instance().NextFrameId();
+    hmd_submitted.fetch_add(1, std::memory_order_release);
+    liverpool->SendCommand([=, this]() {
+        presenter->PresentHmdFrame(frame, frame_id);
+        hmd_taken.fetch_add(1, std::memory_order_release);
+        // The window shows the left eye (the title flips no display buffer of its own in VR).
+        Vulkan::Frame* const mirror = presenter->PrepareHmdMirrorFrame(frame);
+        RunPresenter([this, mirror] { presenter->Present(mirror); });
+    });
+}
+
+void VideoOutDriver::HmdFlip(VideoOutPort* port, s32 index, s64 flip_arg) {
+    {
+        std::unique_lock lock{port->port_mutex};
+        auto& flip_status = port->flip_status;
+        flip_status.count++;
+        flip_status.process_time = Libraries::Kernel::sceKernelGetProcessTime();
+        flip_status.tsc = Libraries::Kernel::sceKernelReadTsc();
+        flip_status.submit_tsc = flip_status.tsc;
+        flip_status.flip_arg = flip_arg;
+        flip_status.current_buffer = index;
+    }
+    for (auto event : port->flip_events) {
+        auto equeue = Kernel::GetEqueue(event);
+        if (equeue != nullptr) {
+            equeue->TriggerEvent(
+                static_cast<u64>(OrbisVideoOutInternalEventId::Flip),
+                Kernel::OrbisKernelEvent::Filter::VideoOut,
+                reinterpret_cast<void*>(static_cast<u64>(OrbisVideoOutInternalEventId::Flip) |
+                                        (flip_arg << 16)));
+        }
+    }
+    if (port->prev_index != -1) {
+        port->buffer_labels[port->prev_index] = 0;
+        port->SignalVoLabel();
+    }
+    port->prev_index = index;
+}
+
 void VideoOutDriver::SubmitFlipInternal(VideoOutPort* port, s32 index, s64 flip_arg, bool is_eop) {
     Vulkan::Frame* frame;
     if (index == -1) {
@@ -921,6 +968,17 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
             vblank_status.process_time = Libraries::Kernel::sceKernelGetProcessTime();
             vblank_status.tsc = Libraries::Kernel::sceKernelReadTsc();
             main_port.vblank_cv.notify_all();
+        }
+
+        // bbport (AstroQuest): the headset reprojects once per refresh of its panel (PS VR:
+        // 120 Hz), whatever rate the port's vblank runs at (BB_VBLANK_HZ, up to 480).
+        {
+            static const u32 hmd_every = std::max(1u, (EmulatorSettings.GetVblankFrequency() + 60) / 120);
+            static u32 hmd_vblanks = 0;
+            if (++hmd_vblanks >= hmd_every) {
+                hmd_vblanks = 0;
+                Libraries::Hmd::OnVblank();
+            }
         }
 
         if (!immediate_flips || main_port.flip_rate != 0) {

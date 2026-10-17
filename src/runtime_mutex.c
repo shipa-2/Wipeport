@@ -129,18 +129,56 @@ static ABI int32_t mutex_timedlock(GuestMutex **mutex, uint32_t usec) {
     if (!e) ++locks;
     return e;
 }
-/* Condition variables: opaque handles over host pthread_cond (CLOCK_REALTIME,
- * like FreeBSD's default), sharing the host mutex behind GuestMutex. */
-typedef struct { pthread_cond_t native; } GuestCond;
+/* Condition variables: opaque handles over host pthread_cond (CLOCK_REALTIME, like FreeBSD's
+ * default, or CLOCK_MONOTONIC from a condition attribute), sharing the host mutex behind
+ * GuestMutex. */
+typedef struct { pthread_cond_t native; clockid_t clock; } GuestCond;
+/* Condition attributes (shadPS4/AstroQuest condvar.cpp): FreeBSD's clock IDs, 0 realtime and
+ * 4 monotonic; process-shared is recorded only (one process). */
+typedef struct { int clock, pshared; } GuestCondAttr;
+#define GUEST_CLOCK_REALTIME 0
+#define GUEST_CLOCK_MONOTONIC 4
 static size_t conds, waits, wakeups;
 static ABI int32_t cond_init(GuestCond **out, void **attr, const char *name) {
-    (void)attr; (void)name;
+    (void)name;
     if (!out) return orbis_error(EINVAL);
+    const GuestCondAttr *a = attr ? *(GuestCondAttr **)attr : NULL;
     GuestCond *c = malloc(sizeof(*c));
     if (!c) return orbis_error(ENOMEM);
-    int e = pthread_cond_init(&c->native, NULL);
+    c->clock = a && a->clock == GUEST_CLOCK_MONOTONIC ? CLOCK_MONOTONIC : CLOCK_REALTIME;
+    pthread_condattr_t native_attr;
+    int e = pthread_condattr_init(&native_attr);
+    if (!e) e = pthread_condattr_setclock(&native_attr, c->clock);
+    if (!e) e = pthread_cond_init(&c->native, &native_attr);
+    pthread_condattr_destroy(&native_attr);
     if (e) { free(c); return orbis_error(e); }
     *out = c; ++conds; return 0;
+}
+static ABI int32_t condattr_init(GuestCondAttr **out) {
+    if (!out) return orbis_error(EINVAL);
+    GuestCondAttr *a = malloc(sizeof(*a));
+    if (!a) return orbis_error(ENOMEM);
+    a->clock = GUEST_CLOCK_REALTIME; a->pshared = 0; *out = a; return 0;
+}
+static ABI int32_t condattr_destroy(GuestCondAttr **attr) {
+    if (!attr || !*attr) return orbis_error(EINVAL);
+    free(*attr); *attr = NULL; return 0;
+}
+static ABI int32_t condattr_setclock(GuestCondAttr **attr, int clock) {
+    if (!attr || !*attr || (clock != GUEST_CLOCK_REALTIME && clock != GUEST_CLOCK_MONOTONIC)) return orbis_error(EINVAL);
+    (*attr)->clock = clock; return 0;
+}
+static ABI int32_t condattr_getclock(GuestCondAttr **attr, int *clock) {
+    if (!attr || !*attr || !clock) return orbis_error(EINVAL);
+    *clock = (*attr)->clock; return 0;
+}
+static ABI int32_t condattr_setpshared(GuestCondAttr **attr, int pshared) {
+    if (!attr || !*attr || pshared < 0 || pshared > 1) return orbis_error(EINVAL);
+    (*attr)->pshared = pshared; return 0;
+}
+static ABI int32_t condattr_getpshared(GuestCondAttr **attr, int *pshared) {
+    if (!attr || !*attr || !pshared) return orbis_error(EINVAL);
+    *pshared = (*attr)->pshared; return 0;
 }
 static int32_t ensure_cond(GuestCond **cond) {
     if (!cond) return orbis_error(EINVAL);
@@ -183,8 +221,17 @@ static int32_t cond_wait_until(GuestCond **cond, GuestMutex **mutex, const struc
     return timed_error(e2);
 }
 static ABI int32_t cond_timedwait(GuestCond **cond, GuestMutex **mutex, uint32_t usec) {
+    int32_t e = ensure_cond(cond);
+    if (e) return e;
     struct timespec end;
     if (deadline_after(&end, usec)) return orbis_error(EINVAL);
+    if ((*cond)->clock != CLOCK_REALTIME) { /* the deadline in the condition's own clock */
+        struct timespec now_real, now;
+        clock_gettime(CLOCK_REALTIME, &now_real); clock_gettime((*cond)->clock, &now);
+        const int64_t ns = ((int64_t)end.tv_sec - now_real.tv_sec) * 1000000000 + (end.tv_nsec - now_real.tv_nsec)
+                           + (int64_t)now.tv_sec * 1000000000 + now.tv_nsec;
+        end.tv_sec = (time_t)(ns / 1000000000); end.tv_nsec = (long)(ns % 1000000000);
+    }
     return cond_wait_until(cond, mutex, &end);
 }
 static ABI int32_t cond_signal(GuestCond **cond) {
@@ -220,37 +267,58 @@ static ABI int32_t posix_cond_wait(GuestCond **c, GuestMutex **m) { return posix
 static ABI int32_t posix_cond_timedwait(GuestCond **c, GuestMutex **m, const GuestTimespec *t) { return posix_result(cond_abs_timedwait(c, m, t)); }
 static ABI int32_t posix_cond_signal(GuestCond **c) { return posix_result(cond_signal(c)); }
 static ABI int32_t posix_cond_broadcast(GuestCond **c) { return posix_result(cond_broadcast(c)); }
+static ABI int32_t posix_condattr_init(GuestCondAttr **a) { return posix_result(condattr_init(a)); }
+static ABI int32_t posix_condattr_destroy(GuestCondAttr **a) { return posix_result(condattr_destroy(a)); }
+static ABI int32_t posix_condattr_setclock(GuestCondAttr **a, int c) { return posix_result(condattr_setclock(a, c)); }
+static ABI int32_t posix_condattr_getclock(GuestCondAttr **a, int *c) { return posix_result(condattr_getclock(a, c)); }
+static ABI int32_t posix_condattr_setpshared(GuestCondAttr **a, int p) { return posix_result(condattr_setpshared(a, p)); }
+static ABI int32_t posix_condattr_getpshared(GuestCondAttr **a, int *p) { return posix_result(condattr_getpshared(a, p)); }
 uintptr_t runtime_mutex_resolve(const char *name) {
-    if (!strcmp(name,"0TyVk4MSLt0#I#J")) return (uintptr_t)posix_cond_init;
-    if (!strcmp(name,"RXXqi4CtF8w#I#J")) return (uintptr_t)posix_cond_destroy;
-    if (!strcmp(name,"Op8TBGY5KHg#I#J")) return (uintptr_t)posix_cond_wait;
-    if (!strcmp(name,"27bAgiJmOh0#I#J")) return (uintptr_t)posix_cond_timedwait;
-    if (!strcmp(name,"2MOy+rUfuhQ#I#J")) return (uintptr_t)posix_cond_signal;
-    if (!strcmp(name,"mkx2fVhNMsg#I#J")) return (uintptr_t)posix_cond_broadcast;
-    if (!strcmp(name,"2Tb92quprl0#p#J")) return (uintptr_t)cond_init;
-    if (!strcmp(name,"g+PZd2hiacg#p#J")) return (uintptr_t)cond_destroy;
-    if (!strcmp(name,"WKAXJ4XBPQ4#p#J")) return (uintptr_t)cond_wait;
-    if (!strcmp(name,"BmMjYxmew1w#p#J")) return (uintptr_t)cond_timedwait;
-    if (!strcmp(name,"kDh-NfxgMtE#p#J")) return (uintptr_t)cond_signal;
-    if (!strcmp(name,"JGgj7Uvrl+A#p#J")) return (uintptr_t)cond_broadcast;
-    if (!strcmp(name,"IafI2PxcPnQ#p#J")) return (uintptr_t)mutex_timedlock;
-    if (!strcmp(name,"dQHWEsJtoE4#I#J")) return (uintptr_t)posix_attr_init;
-    if (!strcmp(name,"mDmgMOGVUqg#I#J")) return (uintptr_t)posix_attr_type;
-    if (!strcmp(name,"HF7lK46xzjY#I#J")) return (uintptr_t)posix_attr_destroy;
-    if (!strcmp(name,"ttHNfU+qDBU#I#J")) return (uintptr_t)posix_mutex_init;
-    if (!strcmp(name,"ltCfaGr2JGE#I#J")) return (uintptr_t)posix_mutex_destroy;
-    if (!strcmp(name,"7H0iTOciTLo#I#J")) return (uintptr_t)posix_mutex_lock;
-    if (!strcmp(name,"K-jXhbt2gn4#I#J")) return (uintptr_t)posix_mutex_trylock;
-    if (!strcmp(name,"2Z+PpY6CaJg#I#J")) return (uintptr_t)posix_mutex_unlock;
-    if (!strcmp(name, "F8bUHwAG284#p#J")) return (uintptr_t)attr_init;
-    if (!strcmp(name, "iMp8QpE+XO4#p#J")) return (uintptr_t)attr_type;
-    if (!strcmp(name, "smWEktiyyG0#p#J")) return (uintptr_t)attr_destroy;
-    if (!strcmp(name, "1FGvU0i9saQ#p#J")) return (uintptr_t)attr_protocol;
-    if (!strcmp(name, "cmo1RIYva9o#p#J")) return (uintptr_t)mutex_init;
-    if (!strcmp(name, "9UK1vLZQft4#p#J")) return (uintptr_t)mutex_lock;
-    if (!strcmp(name, "upoVrzMHFeE#p#J")) return (uintptr_t)mutex_trylock;
-    if (!strcmp(name, "tn3VlD0hG60#p#J")) return (uintptr_t)mutex_unlock;
-    if (!strcmp(name, "2Of0f+3mhhE#p#J")) return (uintptr_t)mutex_destroy;
+    /* Condition attributes (NIDs as shadPS4/AstroQuest condvar.cpp registers them). */
+    if (runtime_import_is(name, "m5-2bsNfv7s#libkernel")) return (uintptr_t)condattr_init;
+    if (runtime_import_is(name, "waPcxYiR3WA#libkernel")) return (uintptr_t)condattr_destroy;
+    if (runtime_import_is(name, "mKoTx03HRWA#libScePosix")) return (uintptr_t)posix_condattr_init;
+    if (runtime_import_is(name, "dJcuQVn6-Iw#libScePosix")) return (uintptr_t)posix_condattr_destroy;
+    if (runtime_import_is(name, "EjllaAqAPZo#libScePosix")) return (uintptr_t)posix_condattr_setclock;
+    if (runtime_import_is(name, "cTDYxTUNPhM#libScePosix")) return (uintptr_t)posix_condattr_getclock;
+    if (runtime_import_is(name, "3BpP850hBT4#libScePosix")) return (uintptr_t)posix_condattr_setpshared;
+    if (runtime_import_is(name, "h0qUqSuOmC8#libScePosix")) return (uintptr_t)posix_condattr_getpshared;
+    if (runtime_import_is(name, "mKoTx03HRWA#libkernel")) return (uintptr_t)posix_condattr_init;
+    if (runtime_import_is(name, "dJcuQVn6-Iw#libkernel")) return (uintptr_t)posix_condattr_destroy;
+    if (runtime_import_is(name, "EjllaAqAPZo#libkernel")) return (uintptr_t)posix_condattr_setclock;
+    if (runtime_import_is(name, "cTDYxTUNPhM#libkernel")) return (uintptr_t)posix_condattr_getclock;
+    if (runtime_import_is(name, "3BpP850hBT4#libkernel")) return (uintptr_t)posix_condattr_setpshared;
+    if (runtime_import_is(name, "h0qUqSuOmC8#libkernel")) return (uintptr_t)posix_condattr_getpshared;
+    if (runtime_import_is(name, "0TyVk4MSLt0#libScePosix")) return (uintptr_t)posix_cond_init;
+    if (runtime_import_is(name, "RXXqi4CtF8w#libScePosix")) return (uintptr_t)posix_cond_destroy;
+    if (runtime_import_is(name, "Op8TBGY5KHg#libScePosix")) return (uintptr_t)posix_cond_wait;
+    if (runtime_import_is(name, "27bAgiJmOh0#libScePosix")) return (uintptr_t)posix_cond_timedwait;
+    if (runtime_import_is(name, "2MOy+rUfuhQ#libScePosix")) return (uintptr_t)posix_cond_signal;
+    if (runtime_import_is(name, "mkx2fVhNMsg#libScePosix")) return (uintptr_t)posix_cond_broadcast;
+    if (runtime_import_is(name, "2Tb92quprl0#libkernel")) return (uintptr_t)cond_init;
+    if (runtime_import_is(name, "g+PZd2hiacg#libkernel")) return (uintptr_t)cond_destroy;
+    if (runtime_import_is(name, "WKAXJ4XBPQ4#libkernel")) return (uintptr_t)cond_wait;
+    if (runtime_import_is(name, "BmMjYxmew1w#libkernel")) return (uintptr_t)cond_timedwait;
+    if (runtime_import_is(name, "kDh-NfxgMtE#libkernel")) return (uintptr_t)cond_signal;
+    if (runtime_import_is(name, "JGgj7Uvrl+A#libkernel")) return (uintptr_t)cond_broadcast;
+    if (runtime_import_is(name, "IafI2PxcPnQ#libkernel")) return (uintptr_t)mutex_timedlock;
+    if (runtime_import_is(name, "dQHWEsJtoE4#libScePosix")) return (uintptr_t)posix_attr_init;
+    if (runtime_import_is(name, "mDmgMOGVUqg#libScePosix")) return (uintptr_t)posix_attr_type;
+    if (runtime_import_is(name, "HF7lK46xzjY#libScePosix")) return (uintptr_t)posix_attr_destroy;
+    if (runtime_import_is(name, "ttHNfU+qDBU#libScePosix")) return (uintptr_t)posix_mutex_init;
+    if (runtime_import_is(name, "ltCfaGr2JGE#libScePosix")) return (uintptr_t)posix_mutex_destroy;
+    if (runtime_import_is(name, "7H0iTOciTLo#libScePosix")) return (uintptr_t)posix_mutex_lock;
+    if (runtime_import_is(name, "K-jXhbt2gn4#libScePosix")) return (uintptr_t)posix_mutex_trylock;
+    if (runtime_import_is(name, "2Z+PpY6CaJg#libScePosix")) return (uintptr_t)posix_mutex_unlock;
+    if (runtime_import_is(name, "F8bUHwAG284#libkernel")) return (uintptr_t)attr_init;
+    if (runtime_import_is(name, "iMp8QpE+XO4#libkernel")) return (uintptr_t)attr_type;
+    if (runtime_import_is(name, "smWEktiyyG0#libkernel")) return (uintptr_t)attr_destroy;
+    if (runtime_import_is(name, "1FGvU0i9saQ#libkernel")) return (uintptr_t)attr_protocol;
+    if (runtime_import_is(name, "cmo1RIYva9o#libkernel")) return (uintptr_t)mutex_init;
+    if (runtime_import_is(name, "9UK1vLZQft4#libkernel")) return (uintptr_t)mutex_lock;
+    if (runtime_import_is(name, "upoVrzMHFeE#libkernel")) return (uintptr_t)mutex_trylock;
+    if (runtime_import_is(name, "tn3VlD0hG60#libkernel")) return (uintptr_t)mutex_unlock;
+    if (runtime_import_is(name, "2Of0f+3mhhE#libkernel")) return (uintptr_t)mutex_destroy;
     return 0;
 }
 void runtime_mutex_report(void) {
@@ -265,18 +333,18 @@ static ABI int32_t posix_cond_timedwait(GuestCond **c, GuestMutex **m, const Gue
 static ABI int32_t posix_cond_signal(GuestCond **c) { return posix_result(cond_signal(c)); }
 static ABI int32_t posix_cond_broadcast(GuestCond **c) { return posix_result(cond_broadcast(c)); }
 uintptr_t runtime_mutex_resolve(const char *name) {
-    if (!strcmp(name,"0TyVk4MSLt0#I#J")) return (uintptr_t)posix_cond_init;
-    if (!strcmp(name,"RXXqi4CtF8w#I#J")) return (uintptr_t)posix_cond_destroy;
-    if (!strcmp(name,"Op8TBGY5KHg#I#J")) return (uintptr_t)posix_cond_wait;
-    if (!strcmp(name,"27bAgiJmOh0#I#J")) return (uintptr_t)posix_cond_timedwait;
-    if (!strcmp(name,"2MOy+rUfuhQ#I#J")) return (uintptr_t)posix_cond_signal;
-    if (!strcmp(name,"mkx2fVhNMsg#I#J")) return (uintptr_t)posix_cond_broadcast;
-    if (!strcmp(name,"2Tb92quprl0#p#J")) return (uintptr_t)cond_init;
-    if (!strcmp(name,"g+PZd2hiacg#p#J")) return (uintptr_t)cond_destroy;
-    if (!strcmp(name,"WKAXJ4XBPQ4#p#J")) return (uintptr_t)cond_wait;
-    if (!strcmp(name,"BmMjYxmew1w#p#J")) return (uintptr_t)cond_timedwait;
-    if (!strcmp(name,"kDh-NfxgMtE#p#J")) return (uintptr_t)cond_signal;
-    if (!strcmp(name,"JGgj7Uvrl+A#p#J")) return (uintptr_t)cond_broadcast;
-    if (!strcmp(name,"IafI2PxcPnQ#p#J")) return (uintptr_t)mutex_timedlock; (void)name; return 0; }
+    if (runtime_import_is(name, "0TyVk4MSLt0#libScePosix")) return (uintptr_t)posix_cond_init;
+    if (runtime_import_is(name, "RXXqi4CtF8w#libScePosix")) return (uintptr_t)posix_cond_destroy;
+    if (runtime_import_is(name, "Op8TBGY5KHg#libScePosix")) return (uintptr_t)posix_cond_wait;
+    if (runtime_import_is(name, "27bAgiJmOh0#libScePosix")) return (uintptr_t)posix_cond_timedwait;
+    if (runtime_import_is(name, "2MOy+rUfuhQ#libScePosix")) return (uintptr_t)posix_cond_signal;
+    if (runtime_import_is(name, "mkx2fVhNMsg#libScePosix")) return (uintptr_t)posix_cond_broadcast;
+    if (runtime_import_is(name, "2Tb92quprl0#libkernel")) return (uintptr_t)cond_init;
+    if (runtime_import_is(name, "g+PZd2hiacg#libkernel")) return (uintptr_t)cond_destroy;
+    if (runtime_import_is(name, "WKAXJ4XBPQ4#libkernel")) return (uintptr_t)cond_wait;
+    if (runtime_import_is(name, "BmMjYxmew1w#libkernel")) return (uintptr_t)cond_timedwait;
+    if (runtime_import_is(name, "kDh-NfxgMtE#libkernel")) return (uintptr_t)cond_signal;
+    if (runtime_import_is(name, "JGgj7Uvrl+A#libkernel")) return (uintptr_t)cond_broadcast;
+    if (runtime_import_is(name, "IafI2PxcPnQ#libkernel")) return (uintptr_t)mutex_timedlock; (void)name; return 0; }
 void runtime_mutex_report(void) { puts("Runtime: Windows mutex backend not implemented"); }
 #endif

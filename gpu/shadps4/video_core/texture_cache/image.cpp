@@ -190,6 +190,28 @@ Image::Image(const Vulkan::Instance& instance, Vulkan::Runtime& runtime_,
     supported_samples = image_format_properties.result == vk::Result::eSuccess
                             ? image_format_properties.value.imageFormatProperties.sampleCounts
                             : vk::SampleCountFlagBits::e1;
+    // bbport: colour images always get storage usage (above), and a driver may support no
+    // multisampled storage image of the format (RADV: B10G11R11 4x): the image was then created
+    // with one sample while the title's shaders read its samples (WipEout resolves its 4x MSAA
+    // scene in a pixel shader), and read black. A multisampled image is never written as storage:
+    // without that usage it keeps its samples.
+    if (info.num_samples > 1 && (usage_flags & vk::ImageUsageFlagBits::eStorage) &&
+        !(supported_samples & LiverpoolToVK::RawNumSamples(info.num_samples))) {
+        const vk::PhysicalDeviceImageFormatInfo2 msaa_info{
+            .format = supported_format,
+            .type = ConvertImageType(info.type),
+            .tiling = tiling,
+            .usage = usage_flags & ~vk::ImageUsageFlagBits::eStorage,
+            .flags = flags,
+        };
+        const auto msaa_properties = instance.GetPhysicalDevice().getImageFormatProperties2(msaa_info);
+        if (msaa_properties.result == vk::Result::eSuccess &&
+            (msaa_properties.value.imageFormatProperties.sampleCounts &
+             LiverpoolToVK::RawNumSamples(info.num_samples))) {
+            usage_flags &= ~vk::ImageUsageFlagBits::eStorage;
+            supported_samples = msaa_properties.value.imageFormatProperties.sampleCounts;
+        }
+    }
 
     const vk::ImageCreateInfo image_ci = {
         .flags = flags,

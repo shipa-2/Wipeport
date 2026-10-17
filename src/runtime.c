@@ -44,6 +44,17 @@ void runtime_set_procparam(void *param) {
 }
 static ABI void *guest_procparam(void) { return process_param; }
 static void **application_heap_api;
+/* sceLibcHeapGetTraceInfo (libSceLibcInternalExt, newer SDKs' libc asks for it at start): where
+ * the heap tracer would find the mspace ID mask and the malloc states. As shadPS4/AstroQuest:
+ * empty tables, no segment information. */
+typedef struct { uint64_t size; uint32_t flag, get_segment_info; uint64_t *mspace_atomic_id_mask, *mstate_table; } HeapTraceInfo;
+static uint64_t heap_trace_id_mask, heap_trace_states[64];
+static ABI void guest_heap_trace_info(HeapTraceInfo *info) {
+    if (!info) return;
+    info->mspace_atomic_id_mask=&heap_trace_id_mask;
+    info->mstate_table=heap_trace_states;
+    info->get_segment_info=0;
+}
 static ABI void guest_set_heap_api(void **api) {
     application_heap_api=api;
     puts("Runtime: application heap API registered");
@@ -91,6 +102,7 @@ void runtime_report(void) {
     runtime_mutex_report();
     runtime_rwlock_report();
     runtime_sema_report();
+    runtime_evf_report();
     runtime_content_report();
     runtime_memory_report();
     runtime_ajm_report();
@@ -205,29 +217,31 @@ uintptr_t runtime_resolve(const char *name, int is_data) {
     if (!(capabilities & 1)) return 0;
     if (is_data) {
         static int32_t need_libc_internal = 1; /* SDK marker variable referenced by Fios2 */
-        if (!strcmp(name, "f7uOxY9mM1U#p#J")) return (uintptr_t)&stack_canary;
-        if (!strcmp(name, "ZT4ODD2Ts9o#libSceLibcInternal")) return (uintptr_t)&need_libc_internal;
+        if (runtime_import_is(name, "f7uOxY9mM1U#libkernel")) return (uintptr_t)&stack_canary;
+        if (runtime_import_is(name, "ZT4ODD2Ts9o#libSceLibcInternal")) return (uintptr_t)&need_libc_internal;
+        if (runtime_import_is(name, "djxxOmW6-aw#libkernel")) return (uintptr_t)&runtime_progname;
         return 0;
     }
-    /* Exact scoped imports for CUSA03173; the suffix identifies library/module. */
-    if (!strcmp(name, "bzQExy189ZI#q#q")) return (uintptr_t)init_env;
-    if (!strcmp(name, "8G2LB+A3rzg#q#q")) return (uintptr_t)guest_atexit;
-    if (!strcmp(name, "tsvEmnenz48#q#q")) return (uintptr_t)guest_cxa_atexit;
-    if (!strcmp(name, "uMei1W9uyNo#q#q")) return (uintptr_t)guest_libc_exit;
+    /* Exact scoped imports (first seen in Bloodborne CUSA03173); the suffix identifies library/module. */
+    if (runtime_import_is(name, "bzQExy189ZI#libc")) return (uintptr_t)init_env;
+    if (runtime_import_is(name, "8G2LB+A3rzg#libc")) return (uintptr_t)guest_atexit;
+    if (runtime_import_is(name, "tsvEmnenz48#libc")) return (uintptr_t)guest_cxa_atexit;
+    if (runtime_import_is(name, "uMei1W9uyNo#libc")) return (uintptr_t)guest_libc_exit;
     /* Not imported by the current eboot, exposed for ABI tests/future use. */
-    if (!strcmp(name, "H2e8t5ScQGc#q#q")) return (uintptr_t)guest_finalize;
-    if (!strcmp(name, "3GPpjQdAMTw#q#q")) return (uintptr_t)guard_acquire;
-    if (!strcmp(name, "9rAeANT2tyE#q#q")) return (uintptr_t)guard_release;
-    if (!strcmp(name, "2emaaluWzUw#q#q")) return (uintptr_t)guard_abort;
-    if (!strcmp(name, "Ou3iL1abvng#p#J")) return (uintptr_t)stack_fail;
-    if (!strcmp(name, "8zTFvBIAIN8#q#q")) return (uintptr_t)guest_memset;
-    if (!strcmp(name, "Q3VBxCXhUHs#q#q")) return (uintptr_t)guest_memcpy;
-    if (!strcmp(name, "+P6FRGH4LfA#q#q")) return (uintptr_t)guest_memmove;
-    if (!strcmp(name, "DfivPArhucg#q#q")) return (uintptr_t)guest_memcmp;
-    if (!strcmp(name, "j4ViWNHEgww#q#q")) return (uintptr_t)guest_strlen;
-    if (!strcmp(name, "vNe1w4diLCs#p#J")) return (uintptr_t)guest_tls_get_addr;
-    if (!strcmp(name, "959qrazPIrg#p#J")) return (uintptr_t)guest_procparam;
-    if (!strcmp(name, "p5EcQeEeJAE#p#J")) return (uintptr_t)guest_set_heap_api;
+    if (runtime_import_is(name, "H2e8t5ScQGc#libc")) return (uintptr_t)guest_finalize;
+    if (runtime_import_is(name, "3GPpjQdAMTw#libc")) return (uintptr_t)guard_acquire;
+    if (runtime_import_is(name, "9rAeANT2tyE#libc")) return (uintptr_t)guard_release;
+    if (runtime_import_is(name, "2emaaluWzUw#libc")) return (uintptr_t)guard_abort;
+    if (runtime_import_is(name, "Ou3iL1abvng#libkernel")) return (uintptr_t)stack_fail;
+    if (runtime_import_is(name, "8zTFvBIAIN8#libc")) return (uintptr_t)guest_memset;
+    if (runtime_import_is(name, "Q3VBxCXhUHs#libc")) return (uintptr_t)guest_memcpy;
+    if (runtime_import_is(name, "+P6FRGH4LfA#libc")) return (uintptr_t)guest_memmove;
+    if (runtime_import_is(name, "DfivPArhucg#libc")) return (uintptr_t)guest_memcmp;
+    if (runtime_import_is(name, "j4ViWNHEgww#libc")) return (uintptr_t)guest_strlen;
+    if (runtime_import_is(name, "vNe1w4diLCs#libkernel")) return (uintptr_t)guest_tls_get_addr;
+    if (runtime_import_is(name, "959qrazPIrg#libkernel")) return (uintptr_t)guest_procparam;
+    if (runtime_import_is(name, "p5EcQeEeJAE#libkernel")) return (uintptr_t)guest_set_heap_api;
+    if (runtime_import_is(name, "NWtTN10cJzE#libSceLibcInternalExt")) return (uintptr_t)guest_heap_trace_info;
     uintptr_t mutex = runtime_mutex_resolve(name);
     if (mutex) return mutex;
     uintptr_t thread = runtime_thread_resolve(name);
@@ -238,12 +252,16 @@ uintptr_t runtime_resolve(const char *name, int is_data) {
     if (timer) return timer;
     uintptr_t sema = runtime_sema_resolve(name);
     if (sema) return sema;
+    uintptr_t evf = runtime_evf_resolve(name);
+    if (evf) return evf;
     uintptr_t rwlock = runtime_rwlock_resolve(name);
     if (rwlock) return rwlock;
     uintptr_t memory = runtime_memory_resolve(name);
     if (memory) return memory;
     uintptr_t kernel = runtime_kernel_resolve(name);
     if (kernel) return kernel;
+    uintptr_t module = runtime_module_resolve(name);
+    if (module) return module;
     uintptr_t services = runtime_services_resolve(name);
     if (services) return services;
     uintptr_t ajm = runtime_ajm_resolve(name);
@@ -263,10 +281,21 @@ uintptr_t runtime_resolve(const char *name, int is_data) {
 static const struct { const char *nid, *symbol; } import_names[]={
 #include "import_names.inc"
 };
-/* Symbol name for a scoped NID, or NULL when this eboot/libc never imports it. */
+/* The symbol name of an import, by its NID and library (src/import_names.inc). */
 const char *runtime_symbol(const char *nid) {
     for (size_t i=0;i<sizeof(import_names)/sizeof(*import_names);++i)
-        if (!strcmp(nid,import_names[i].nid)) return import_names[i].symbol;
+        if (runtime_import_is(nid,import_names[i].nid)) return import_names[i].symbol;
+    /* libScePosix is a library of the libkernel module with the same functions under the same
+     * NIDs (shadPS4 registers each in both): a name known in one is the other's. Explicit
+     * NID comparisons (runtime_import_is) stay exact. */
+    const char *hash=strchr(nid,'#');
+    if (!hash || (size_t)(hash-nid)>15) return NULL;
+    const char *twin=!strcmp(hash+1,"libScePosix") ? "libkernel" : !strcmp(hash+1,"libkernel") ? "libScePosix" : NULL;
+    if (!twin) return NULL;
+    char alias[48];
+    snprintf(alias,sizeof(alias),"%.*s#%s",(int)(hash-nid),nid,twin);
+    for (size_t i=0;i<sizeof(import_names)/sizeof(*import_names);++i)
+        if (runtime_import_is(alias,import_names[i].nid)) return import_names[i].symbol;
     return NULL;
 }
 /* Same symbol name means same contract whether imported from libkernel or

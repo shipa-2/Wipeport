@@ -6,6 +6,9 @@
 #include <core/libraries/system/userservice.h>
 #include "core/libraries/kernel/equeue.h"
 #include "core/libraries/videoout/buffer.h"
+#include "core/vr/vr_runtime.h"
+#include "video_core/amdgpu/resource.h"
+#include <array>
 
 namespace Core::Loader {
 class SymbolsResolver;
@@ -39,6 +42,7 @@ constexpr int SCE_VIDEO_OUT_BUFFER_ATTRIBUTE_OPTION_NONE = 0;
 constexpr int SCE_VIDEO_OUT_BUFFER_ATTRIBUTE_OPTION_VR = 7;
 constexpr int SCE_VIDEO_OUT_BUFFER_ATTRIBUTE_OPTION_STRICT_COLORIMETRY = 8;
 
+constexpr int ORBIS_VIDEO_OUT_DEVICE_CAPABILITY_VR_VIEW = 0x20; // bbport (AstroQuest)
 constexpr int ORBIS_VIDEO_OUT_DEVICE_CAPABILITY_BT2020_PQ = 0x80;
 
 enum OrbisVideoOutColorimetry : u8 {
@@ -140,6 +144,20 @@ s32 PS4_SYSV_ABI sceVideoOutAdjustColor(s32 handle, const SceVideoOutColorSettin
 
 // Internal system functions
 s32 sceVideoOutSubmitEopFlip(s32 handle, u32 buf_id, u32 mode, s64 flip_arg, void** unk);
+
+/// bbport (AstroQuest): one stereo frame handed to the headset by the HMD reprojection.
+struct HmdFrame {
+    std::array<AmdGpu::Image, 2> eye_textures; ///< Guest texture descriptors, left then right.
+    Core::Vr::Fov fov;                         ///< Field of view the eyes were rendered with.
+    /// Head pose used for rendering: in tracker space as the title hands it in, in the host's
+    /// space once the frame is on its way to the display.
+    Core::Vr::Pose render_pose;
+    s64 flip_arg;
+};
+/// Queues a frame for the headset (the OpenXR host), in order with the GPU's work.
+s32 SubmitHmdFrame(s32 handle, const HmdFrame& frame);
+/// The reprojection's flip of a display buffer (once a headset refresh, Hmd::OnVblank).
+s32 SubmitHmdFlip(s32 handle, s32 index, s64 flip_arg);
 
 void RegisterLib(Core::Loader::SymbolsResolver* sym);
 

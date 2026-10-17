@@ -23,6 +23,7 @@
 #include <sys/resource.h>
 #include <sys/time.h>
 #include <x86intrin.h>
+#include <arpa/inet.h>
 #define ERR(n) ((int32_t)(UINT32_C(0x80020000)|(n)))
 #define PAGE 16384
 
@@ -171,8 +172,19 @@ static ABI __attribute__((noreturn)) void raise_exception(uint32_t code,uint64_t
     runtime_report();
     exit(23);
 }
-static ABI int32_t print_backtrace(void) {
-    fputs("Runtime: guest requested a backtrace (not available)\n",stderr);
+/* The guest's frame chain (its code keeps frame pointers): return addresses, read with
+ * process_vm_readv so a broken chain ends the walk instead of faulting. */
+static ABI __attribute__((noinline)) int32_t print_backtrace(void) {
+    fputs("Runtime: guest backtrace:\n",stderr);
+    uintptr_t rbp=(uintptr_t)__builtin_frame_address(0);
+    for (int depth=0;depth<32 && rbp;++depth) {
+        uintptr_t frame[2];
+        struct iovec local={frame,sizeof(frame)}, remote={(void *)rbp,sizeof(frame)};
+        if (process_vm_readv(getpid(),&local,1,&remote,1,0)!=(ssize_t)sizeof(frame)) break;
+        if (frame[1]) fprintf(stderr,"  #%d %#lx\n",depth,(unsigned long)frame[1]);
+        if (frame[0]<=rbp) break;
+        rbp=frame[0];
+    }
     return 0;
 }
 typedef struct { uint32_t bits[4]; } GuestSigset;
@@ -287,6 +299,73 @@ static ABI int32_t posix_key_create(uint32_t *k,KeyDestructor d) { int32_t r=key
 static ABI int32_t posix_key_delete(uint32_t k) { int32_t r=key_delete(k); return r ? r&0xffff : 0; }
 static ABI int32_t posix_key_set(uint32_t k,void *v) { int32_t r=key_set(k,v); return r ? r&0xffff : 0; }
 
+/* ---- From shadPS4/AstroQuest (kernel/time.cpp, kernel.cpp, memory.cpp, process.cpp) for
+ * WipEout's SDK. ---- */
+/* OrbisTimesec: the UTC time, the zone's offset east of UTC without and the DST offset. */
+typedef struct { int64_t t; uint32_t west_sec, dst_sec; } GuestTimesec;
+static ABI int32_t convert_utc_to_local(int64_t utc,int64_t *local,GuestTimesec *st,uint64_t *dst) {
+    if (!local) return ERR(22);
+    const time_t t=(time_t)utc;
+    struct tm tm;
+    if (!localtime_r(&t,&tm)) return ERR(22);
+    const int64_t dst_seconds=tm.tm_isdst>0 ? 3600 : 0;
+    *local=utc+tm.tm_gmtoff;
+    if (st) { st->t=utc; st->west_sec=(uint32_t)(tm.tm_gmtoff-dst_seconds); st->dst_sec=(uint32_t)dst_seconds; }
+    if (dst) *dst=(uint64_t)dst_seconds;
+    return 0;
+}
+static ABI int32_t convert_local_to_utc(int64_t local,int64_t dst_given,int64_t *utc,GuestTimezone *tz,int32_t *dst_seconds) {
+    (void)dst_given;
+    if (!tz) return ERR(22); /* as shadPS4: the zone is required */
+    kernel_gettimezone(tz);
+    /* The offset at the local time read as UTC: off by at most the DST change near it. */
+    const time_t t=(time_t)local;
+    struct tm tm;
+    if (!localtime_r(&t,&tm)) return ERR(22);
+    if (utc) *utc=local-tm.tm_gmtoff;
+    if (dst_seconds) *dst_seconds=tm.tm_isdst>0 ? 3600 : 0;
+    return 0;
+}
+/* A random (version 4) UUID; OrbisKernelUuid has the RFC 4122 layout. */
+static ABI int32_t uuid_create(uint8_t *uuid) {
+    if (!uuid) return ERR(22);
+    if (getrandom(uuid,16,0)!=16) return ERR(14);
+    uuid[6]=(uint8_t)((uuid[6]&0x0f)|0x40);
+    uuid[8]=(uint8_t)((uuid[8]&0x3f)|0x80);
+    return 0;
+}
+/* The base PS4 by default; BB_NEO=1 reports a PS4 Pro (the game's own Pro mode). */
+static ABI int32_t is_neo_mode(void) {
+    const char *neo=getenv("BB_NEO");
+    return neo && !strcmp(neo,"1");
+}
+static ABI int32_t kernel_ok(void) { return 0; }
+static ABI int32_t posix_msync(void *address,uint64_t size,int flags) { (void)address; (void)size; (void)flags; return 0; }
+/* No descriptor flags are kept: F_GETFD/F_GETFL read 0, the setters and locks succeed. */
+static ABI int32_t posix_fcntl(int fd,int cmd,uint64_t arg) {
+    (void)cmd; (void)arg;
+    return fd<0 ? fail_posix(EBADF) : 0;
+}
+/* libc's process name (data import __progname). */
+static const char progname_text[]="eboot.bin";
+const char *runtime_progname=progname_text;
+/* The unwinder asks whether a return address is that of the signal trampoline: there is none
+ * in guest code. dl_phdr matching is answered "no" (the port lists no ELF program headers). */
+static ABI int32_t is_signal_return(uintptr_t address) { (void)address; return 0; }
+static ABI int32_t elf_phdr_match_addr(void *info,uintptr_t address) { (void)info; (void)address; return 0; }
+static ABI void pthread_cxa_finalize(void *dso) { (void)dso; }
+static ABI int32_t posix_sigreturn(void *context) { (void)context; return fail_posix(EINVAL); }
+/* POSIX sockets: the port has no network (sceNetSocket fails too), so there is no socket. */
+static ABI int32_t posix_no_socket(void) { return fail_posix(EBADF); }
+/* inet_ntop: FreeBSD's AF_INET6 is 28 (Linux 10). */
+static ABI const char *posix_inet_ntop(int af,const void *src,char *dst,uint32_t size) {
+    if (af==28) af=AF_INET6;
+    if (af!=AF_INET && af!=AF_INET6) { fail_posix(EAFNOSUPPORT); return NULL; }
+    const char *r=inet_ntop(af,src,dst,size);
+    if (!r) fail_posix(errno);
+    return r;
+}
+
 static const RuntimeExport exports[]={
     {"sceKernelClockGettime",kernel_clock_gettime}, {"clock_gettime",posix_clock_gettime},
     {"clock_getres",posix_clock_getres},
@@ -311,6 +390,15 @@ static const RuntimeExport exports[]={
     {"scePthreadSetspecific",key_set}, {"scePthreadGetspecific",key_get},
     {"pthread_key_create",posix_key_create}, {"pthread_key_delete",posix_key_delete},
     {"pthread_setspecific",posix_key_set}, {"pthread_getspecific",key_get},
+    {"sceKernelConvertUtcToLocaltime",convert_utc_to_local}, {"sceKernelConvertLocaltimeToUtc",convert_local_to_utc},
+    {"sceKernelUuidCreate",uuid_create}, {"sceKernelIsNeoMode",is_neo_mode},
+    {"sceKernelMlock",kernel_ok}, {"sceKernelIsAddressSanitizerEnabled",kernel_ok}, {"msync",posix_msync},
+    {"_nanosleep",posix_nanosleep}, {"fcntl",posix_fcntl},
+    {"_is_signal_return",is_signal_return}, {"__elf_phdr_match_addr",elf_phdr_match_addr},
+    {"__pthread_cxa_finalize",pthread_cxa_finalize}, {"sigreturn",posix_sigreturn},
+    {"bind",posix_no_socket}, {"getsockname",posix_no_socket}, {"getsockopt",posix_no_socket},
+    {"recvfrom",posix_no_socket}, {"sendto",posix_no_socket}, {"setsockopt",posix_no_socket},
+    {"shutdown",posix_no_socket}, {"inet_ntop",posix_inet_ntop},
 };
 uintptr_t runtime_kernel_resolve(const char *name) { return RUNTIME_LOOKUP(exports,name); }
 #else

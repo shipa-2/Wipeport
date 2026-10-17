@@ -9,6 +9,8 @@
 #include <mutex>
 
 #include "core/libraries/videoout/buffer.h"
+#include "core/libraries/videoout/video_out.h"
+#include "video_core/renderer_vulkan/vk_vr_exporter.h"
 #include "video_core/renderer_vulkan/host_passes/fsr_pass.h"
 #include "video_core/renderer_vulkan/host_passes/pp_pass.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
@@ -38,7 +40,9 @@ struct Frame {
     u64 ready_tick;
     bool is_hdr{false};
     u8 id{};
-
+    /// bbport (AstroQuest's VR host): the headset swapchain image this frame is, or -1 for a
+    /// frame shown on the window.
+    s8 host_buffer{-1};
 };
 
 enum SchedulerType {
@@ -94,8 +98,14 @@ public:
 
     bool IsVideoOutSurface(const AmdGpu::ColorBuffer& color_buffer) const;
 
+    /// bbport (AstroQuest): composes a headset frame (both eyes side by side) into an image of
+    /// the OpenXR swapchain and hands it to the host once the GPU is done. GPU thread.
+    void PresentHmdFrame(const Libraries::VideoOut::HmdFrame& frame, u32 frame_id);
+
     Frame* PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& attribute,
-                        VAddr cpu_address);
+                        VAddr cpu_address, VideoCore::ImageId source = {});
+    /// bbport: the window's picture of a headset frame (its left eye). GPU thread.
+    Frame* PrepareHmdMirrorFrame(const Libraries::VideoOut::HmdFrame& frame);
 
     Frame* PrepareBlankFrame(bool present_thread);
 
@@ -140,6 +150,7 @@ private:
     std::condition_variable free_cv;
     std::condition_variable_any frame_cv;
     std::vector<VAddr> vo_buffers_addr;
+    std::unique_ptr<VrExporter> vr_exporter; ///< bbport (AstroQuest): frames for the headset
 };
 
 } // namespace Vulkan
