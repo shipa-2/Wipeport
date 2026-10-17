@@ -8,6 +8,13 @@ otherwise).
 import os
 
 EN = {
+    '{}×{} на глаз': '{}×{} per eye',
+    'как на PS4': 'as on PS4',
+    'как на PS4 Pro': 'as on PS4 Pro',
+    'Своё…': 'Custom…',
+    'Своё разрешение глаза (ширина×высота или ширина)': 'Custom eye resolution (width×height or width)',
+    'Ширина от {} до {}': 'Width from {} to {}',
+    'Будет {}×{} на глаз (пропорции 8:9 задаёт игра)': '{}×{} per eye (the game keeps the 8:9 shape)',
     'Папка игры (CUSA05670)': 'Game folder (CUSA05670)',
     'Распакуйте каждый мод в отдельную папку: файлы в data/ (игра берёт их раньше своих архивов) или заменённые архивы .psarc. При совпадении файлов побеждает мод ниже в списке. Применяется при запуске.': 'Unpack each mod into its own folder: files under data/ (the game takes them before its archives) or replacement .psarc archives. When files collide, the mod lower in the list wins. Applied at launch.',
     'XML-патчи в формате shadPS4 для версии 01.07 из папки патчей. Применяются при запуске.': 'shadPS4-format XML patches for version 01.07 from the patches folder. Applied at launch.',
@@ -30,7 +37,6 @@ EN = {
     'Изображение в шлеме': 'Headset picture',
     'Патчи игры, применяются при запуске': 'Game patches, applied at launch',
     'Разрешение глаза': 'Eye resolution',
-    '{}×{} на глаз (1.4 — как на PS4)': '{}×{} per eye (1.4 — as on PS4)',
     'Частота кадров': 'Frame rate',
     '60 (как на PS4, SteamVR дорисовывает до 120)': '60 (as on PS4, SteamVR reprojects to 120)',
     'Динамическое разрешение': 'Dynamic resolution',

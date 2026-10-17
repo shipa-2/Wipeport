@@ -94,6 +94,29 @@ RENDER_RES = [("1920×1080 (как на PS4)", ""), ("2560×1440", "2560x1440"),
 # PS VR through SteamVR (the VR page): when the game sees a headset (SHADPS4_VR).
 VR_MODES = [("Авто: если SteamVR видит шлем", "auto"), ("Всегда (VR-режим игры)", "on"),
             ("Выключен (обычный экран)", "off")]
+# The eye size (wocport.ini vr_scale = width / 960): the game sizes the eyes from the PS VR panel,
+# 960×1080 an eye, times one scale, so they keep its 8:9 shape (scripts/wipeout_patches.py).
+EYE_WIDTHS = [(1344, "как на PS4"), (1440, "как на PS4 Pro"), (1536, ""), (1728, ""), (1920, ""),
+              (2112, ""), (2304, ""), (2496, ""), (2688, "")]
+EYE_MIN, EYE_MAX = 960, 3840
+
+
+def eye_size(width):
+    """The eye (width, height) the game renders for a wanted width (its 8:9 shape)."""
+    scale = width / 960
+    return round(960 * scale), round(1080 * scale)
+
+
+def parse_eye(text):
+    """The width out of "1920x2160", "1920×2160" or "1920"; None when not a usable one."""
+    import re as _re
+    match = _re.match(r"\s*(\d+)", text or "")
+    if not match:
+        return None
+    width = int(match.group(1))
+    return width if EYE_MIN <= width <= EYE_MAX else None
+
+
 VR_FPS = [("60 (как на PS4, SteamVR дорисовывает до 120)", "60"), ("120", "120")]
 PRESENT_MODES = [("Mailbox", "Mailbox"), ("FIFO (VSync)", "Fifo"),
                  ("FIFO Relaxed", "FifoRelaxed"), ("Immediate", "Immediate")]
@@ -981,7 +1004,7 @@ class LauncherWindow(Adw.ApplicationWindow):
             "output_res": combo_value(self.output_row),
             "live_resolution": combo_value(self.live_row),
             "render_res": combo_value(self.render_res_row),
-            "vr_scale": f"{self.vr_scale_row.get_value():.2f}",
+            "vr_scale": self.vr_scale_value(),
             "vr_fps": combo_value(self.vr_fps_row),
             "vr_dynres": "1" if self.vr_dynres_row.get_active() else "0",
         })
@@ -1123,18 +1146,32 @@ class LauncherWindow(Adw.ApplicationWindow):
 
         image = Adw.PreferencesGroup(title=tr("Изображение в шлеме"),
                                      description=tr("Патчи игры, применяются при запуске"))
-        self.vr_scale_row = Adw.SpinRow.new_with_range(1.0, 3.0, 0.1)
-        self.vr_scale_row.set_title(tr("Разрешение глаза"))
-        self.vr_scale_row.set_digits(1)
-        self.vr_scale_row.set_value(float(self.ini.get("vr_scale") or "1.4"))
+        try:
+            current = round(960 * float(self.ini.get("vr_scale") or "1.4"))
+        except ValueError:
+            current = 1344
+        choices = [(tr("{}×{} на глаз").format(*eye_size(w)) + (f" ({tr(note)})" if note else ""), str(w))
+                   for w, note in EYE_WIDTHS]
+        choices.append((tr("Своё…"), "custom"))
+        preset = str(current) if any(w == current for w, _ in EYE_WIDTHS) else "custom"
+        self.vr_eye_row = combo_row(tr("Разрешение глаза"), None, choices, preset)
+        image.add(self.vr_eye_row)
+        self.vr_eye_entry = Adw.EntryRow(title=tr("Своё разрешение глаза (ширина×высота или ширина)"),
+                                         text="{}×{}".format(*eye_size(current)))
+        image.add(self.vr_eye_entry)
 
         def show_eye(*_):
-            scale = self.vr_scale_row.get_value()
-            self.vr_scale_row.set_subtitle(tr("{}×{} на глаз (1.4 — как на PS4)").format(
-                round(960 * scale), round(1080 * scale)))
-        self.vr_scale_row.connect("notify::value", show_eye)
+            custom = combo_value(self.vr_eye_row) == "custom"
+            self.vr_eye_entry.set_visible(custom)
+            width = parse_eye(self.vr_eye_entry.get_text())
+            if width is None:
+                self.vr_eye_row.set_subtitle(tr("Ширина от {} до {}").format(EYE_MIN, EYE_MAX) if custom else "")
+            else:
+                self.vr_eye_row.set_subtitle(tr("Будет {}×{} на глаз (пропорции 8:9 задаёт игра)").format(
+                    *eye_size(width)) if custom else "")
+        self.vr_eye_row.connect("notify::selected", show_eye)
+        self.vr_eye_entry.connect("changed", show_eye)
         show_eye()
-        image.add(self.vr_scale_row)
         self.vr_fps_row = combo_row(tr("Частота кадров"), None, VR_FPS, self.ini.get("vr_fps", "60"))
         image.add(self.vr_fps_row)
         self.vr_dynres_row = Adw.SwitchRow(
@@ -1145,6 +1182,14 @@ class LauncherWindow(Adw.ApplicationWindow):
         image.add(self.vr_dynres_row)
         page.add(image)
         return page
+
+    def vr_scale_value(self):
+        """wocport.ini vr_scale for the chosen eye width (the previous one when the entry is bad)."""
+        choice = combo_value(self.vr_eye_row)
+        width = parse_eye(self.vr_eye_entry.get_text()) if choice == "custom" else int(choice)
+        if width is None:
+            return self.ini.get("vr_scale") or "1.4"
+        return f"{width / 960:.4f}".rstrip("0").rstrip(".")
 
     def build_log_page(self):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
