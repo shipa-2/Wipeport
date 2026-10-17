@@ -47,16 +47,16 @@ struct Profile {
     bool has_broken_spirv_clamp{};
     bool lower_left_origin_mode{};
     bool needs_manual_interpolation{};
-    /// bbport: NVIDIA without fragment shader barycentrics (Pascal and older).
+    /// wocport: NVIDIA without fragment shader barycentrics (Pascal and older).
     bool needs_integer_interpolation_fix{};
     bool needs_lds_barriers{};
     bool needs_buffer_offsets{};
     bool needs_unorm_fixup{};
     bool needs_clip_distance_emulation{};
     bool supports_shader_stencil_export{};
-    /// bbport BB_LAYER_MEMORY: guest buffers of IsPagedBuffer size go through the page table.
+    /// wocport WOC_LAYER_MEMORY: guest buffers of IsPagedBuffer size go through the page table.
     bool paged_buffers{};
-    /// bbport: the game's buffer copy compute shader (its GCN program hash, from the game's profile;
+    /// wocport: the game's buffer copy compute shader (its GCN program hash, from the game's profile;
     /// 0 = none): its paged stores go through to the game's memory as well.
     u64 buffer_copy_shader_hash{};
 

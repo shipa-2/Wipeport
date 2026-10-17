@@ -19,7 +19,7 @@ int main(int argc, char** argv) {
     using namespace Vulkan;
     using namespace Shader;
     // The regression must exercise no AMD marker commands, including diagnostic breadcrumbs.
-    setenv("BB_BREADCRUMBS","0",1);
+    setenv("WOC_BREADCRUMBS","0",1);
     Instance instance(0, true);
     static vk::detail::DynamicLoader loader;
     vk::detail::DispatchLoaderDynamic d;

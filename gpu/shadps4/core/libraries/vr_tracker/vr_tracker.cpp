@@ -14,7 +14,7 @@
 #include "core/libraries/libs.h"
 #include "core/libraries/vr_tracker/vr_tracker.h"
 #include "core/libraries/vr_tracker/vr_tracker_error.h"
-extern "C" int runtime_memory_is_mapped(uintptr_t address, uint64_t size); // bbport: src/runtime.h
+extern "C" int runtime_memory_is_mapped(uintptr_t address, uint64_t size); // wocport: src/runtime.h
 #include "core/vr/vr_runtime.h"
 #include "video_core/amdgpu/liverpool.h"
 
@@ -186,7 +186,7 @@ s32 PS4_SYSV_ABI sceVrTrackerInit(const OrbisVrTrackerInitParam* param) {
     }
 
     // Real hardware will segfault if any of the supplied mappings aren't long enough.
-    // bbport: checked against the runtime's mappings (runtime_memory.c); memory the runtime does
+    // wocport: checked against the runtime's mappings (runtime_memory.c); memory the runtime does
     // not track (the executable's own data) is taken as it is, with a warning.
     const auto check = [](const void* address, u32 size, const char* what) {
         if (!runtime_memory_is_mapped(reinterpret_cast<uintptr_t>(address), size)) {

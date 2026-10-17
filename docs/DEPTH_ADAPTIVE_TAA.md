@@ -95,7 +95,7 @@ if (object_motion.b > 0.99 && abs(object_motion.a - depth) < depth_threshold &&
 
 **Файл:** `gpu/shadps4/video_core/host_shaders/camera_motion.comp`
 
-Режимы `BB_DEBUG_MOTION=1` теперь структурированы:
+Режимы `WOC_DEBUG_MOTION=1` теперь структурированы:
 ```glsl
 if (mode == 1) {
     // Raw depth visualization
@@ -128,7 +128,7 @@ if (mode == 1) {
 ### Визуальная проверка
 ```bash
 # TAA в нативном разрешении
-BB_UPSCALER=taa bash run.sh
+WOC_UPSCALER=taa bash run.sh
 
 # Проверить:
 # 1. Мерцание далёких стен (Hunter's Dream, верхние этажи)
@@ -140,7 +140,7 @@ BB_UPSCALER=taa bash run.sh
 ### Debug режимы
 ```bash
 # Визуализация глубины
-BB_DEBUG_MOTION=1 bash run.sh
+WOC_DEBUG_MOTION=1 bash run.sh
 # Toggle: (1<<21) = raw depth, (1<<22) = view-space z
 
 # Проверка motion vectors
@@ -150,7 +150,7 @@ BB_DEBUG_MOTION=1 bash run.sh
 ### A/B сравнение
 ```bash
 # Создать файл для runtime-переключения
-echo "0" > /tmp/bb_toggle
+echo "0" > /tmp/woc_toggle
 
 # В игре переключать биты для сравнения
 # Потребуется временный механизм для старых/новых весов

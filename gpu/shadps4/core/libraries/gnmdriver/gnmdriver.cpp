@@ -21,8 +21,8 @@
 #include "core/memory.h"
 #include "core/platform.h"
 #include "video_core/amdgpu/liverpool.h"
-#include "bbport_toggles.h"
-#include "bbport_timeline.h"
+#include "wocport_toggles.h"
+#include "wocport_timeline.h"
 #include "video_core/amdgpu/pm4_cmds.h"
 #include "video_core/renderer_vulkan/vk_presenter.h"
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
@@ -89,9 +89,9 @@ static void ResetSubmissionLock(Platform::InterruptId irq) {
 
 bool SubmitLockOnDecode() {
     // Only with honest labels: without them the GPU idle interrupt comes at decode anyway, and
-    // IsGpuIdle keeps waiting for the deferred fences (BB_WORK_RETIRED, Steam Deck crashes).
+    // IsGpuIdle keeps waiting for the deferred fences (WOC_WORK_RETIRED, Steam Deck crashes).
     static const bool on = [] {
-        const char* env = std::getenv("BB_SUBMIT_LOCK");
+        const char* env = std::getenv("WOC_SUBMIT_LOCK");
         return !(env && std::string_view{env} == "gpu");
     }();
     return on && Vulkan::Rasterizer::HonestLabels();
@@ -103,25 +103,25 @@ void ReleaseSubmissionLock() {
     cv_lock.notify_all();
 }
 
-// bbport BB_SUBMIT_LOCK=decode: frames (sceGnmSubmitDone calls) the GPU has finished.
+// wocport WOC_SUBMIT_LOCK=decode: frames (sceGnmSubmitDone calls) the GPU has finished.
 static u64 frames_retired{};
 
 void NoteFramesRetired(u64 frames) {
-    BbTimeline::Note(BbTimeline::FrameRetired, frames);
+    WocTimeline::Note(WocTimeline::FrameRetired, frames);
     std::unique_lock lock{m_wait_idle};
     frames_retired = std::max(frames_retired, frames);
     cv_lock.notify_all();
 }
 
-// BB_SUBMIT_LOCK=frame: the guest gets what the submission lock gave it - a submission made after
+// WOC_SUBMIT_LOCK=frame: the guest gets what the submission lock gave it - a submission made after
 // sceGnmSubmitDone returns once the GPU has finished the frame before (the game frees that frame's
 // memory then: without it, its heap ran out after ~7 minutes) - but the work is handed over first,
 // so the GPU starts the next frame instead of draining between frames.
-// BB_SUBMIT_LOCK=ahead (an experiment): submissions do not wait, sceGnmSubmitDone(F) waits for
+// WOC_SUBMIT_LOCK=ahead (an experiment): submissions do not wait, sceGnmSubmitDone(F) waits for
 // frame F-1 (the guest runs up to a frame ahead of the GPU).
 static bool RunAhead() {
     static const bool on = [] {
-        const char* env = std::getenv("BB_SUBMIT_LOCK");
+        const char* env = std::getenv("WOC_SUBMIT_LOCK");
         return env && std::string_view{env} == "ahead";
     }();
     return on;
@@ -129,13 +129,13 @@ static bool RunAhead() {
 
 static void WaitPreviousFrame();
 
-// BB_SUBMIT_AHEAD=K (default 2): the first K submissions of a frame do not wait for the previous
+// WOC_SUBMIT_AHEAD=K (default 2): the first K submissions of a frame do not wait for the previous
 // frame, the next ones do: they are translated while the GPU finishes the previous frame instead
 // of after it. 0: every submission waits.
 static u32 submits_this_frame = 0;
 static u32 SubmitsAhead() {
     static const u32 ahead = [] {
-        const char* env = std::getenv("BB_SUBMIT_AHEAD");
+        const char* env = std::getenv("WOC_SUBMIT_AHEAD");
         return env ? u32(std::max(0, std::atoi(env))) : 2u;
     }();
     return ahead;
@@ -152,15 +152,15 @@ static void WaitPreviousFrame() {
     if (frames_retired >= u64(frames_submitted)) {
         return;
     }
-    BbTimeline::Note(BbTimeline::GuestWaitBegin, u64(frames_submitted));
+    WocTimeline::Note(WocTimeline::GuestWaitBegin, u64(frames_submitted));
     const auto start = std::chrono::steady_clock::now();
     cv_lock.wait(lock, [] { return frames_retired >= u64(frames_submitted); });
-    BbStats::gnm_frame_waits.fetch_add(1, std::memory_order_relaxed);
-    BbStats::gnm_frame_wait_ns.fetch_add(
+    WocStats::gnm_frame_waits.fetch_add(1, std::memory_order_relaxed);
+    WocStats::gnm_frame_wait_ns.fetch_add(
         std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start)
             .count(),
         std::memory_order_relaxed);
-    BbTimeline::Note(BbTimeline::GuestWaitEnd, u64(frames_submitted));
+    WocTimeline::Note(WocTimeline::GuestWaitEnd, u64(frames_submitted));
 }
 
 static void WaitGpuIdle() {
@@ -171,8 +171,8 @@ static void WaitGpuIdle() {
     }
     const auto start = std::chrono::steady_clock::now();
     cv_lock.wait(lock, [] { return submission_lock == 0; });
-    BbStats::gnm_frame_waits.fetch_add(1, std::memory_order_relaxed);
-    BbStats::gnm_frame_wait_ns.fetch_add(
+    WocStats::gnm_frame_waits.fetch_add(1, std::memory_order_relaxed);
+    WocStats::gnm_frame_wait_ns.fetch_add(
         std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start)
             .count(),
         std::memory_order_relaxed);
@@ -250,11 +250,11 @@ s32 PS4_SYSV_ABI sceGnmAddEqEvent(OrbisKernelEqueue eq, u64 id, void* udata) {
 
 int PS4_SYSV_ABI sceGnmAreSubmitsAllowed() {
     LOG_TRACE(Lib_GnmDriver, "called");
-    // bbport (frame stats): how often the guest asks, and how often it hears no.
+    // wocport (frame stats): how often the guest asks, and how often it hears no.
     const bool allowed = submission_lock == 0;
-    BbStats::submits_allowed_queries.fetch_add(1, std::memory_order_relaxed);
+    WocStats::submits_allowed_queries.fetch_add(1, std::memory_order_relaxed);
     if (!allowed) {
-        BbStats::submits_refused.fetch_add(1, std::memory_order_relaxed);
+        WocStats::submits_refused.fetch_add(1, std::memory_order_relaxed);
     }
     return allowed;
 }
@@ -2468,8 +2468,8 @@ s32 PS4_SYSV_ABI sceGnmSubmitCommandBuffers(u32 count, const u32* dcb_gpu_addrs[
 
 s32 PS4_SYSV_ABI sceGnmSubmitDone() {
     HLE_TRACE;
-    BbStats::submit_done_calls.fetch_add(1, std::memory_order_relaxed);
-    BbTimeline::Note(BbTimeline::GuestSubmitDone, u64(frames_submitted) + 1);
+    WocStats::submit_done_calls.fetch_add(1, std::memory_order_relaxed);
+    WocTimeline::Note(WocTimeline::GuestSubmitDone, u64(frames_submitted) + 1);
     LOG_DEBUG(Lib_GnmDriver, "called");
     std::scoped_lock lk{m_submit_lock};
     if (SubmitLockOnDecode()) {

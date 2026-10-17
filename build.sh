@@ -14,17 +14,17 @@ if [[ -z ${CC:-} ]]; then echo 'Install GCC/Clang or set CC.' >&2; exit 1; fi
 # Dependencies come from pkg-config (Vulkan loader/headers, SDL3). On NixOS the
 # environment is provided by shell.nix; re-enter it automatically if needed.
 if ! { command -v pkg-config >/dev/null && pkg-config --exists vulkan sdl3 && command -v cmake >/dev/null && command -v ninja >/dev/null; }; then
-    if [[ -z ${BB_IN_NIX_SHELL:-} ]] && command -v nix-shell >/dev/null; then
-        exec env BB_IN_NIX_SHELL=1 nix-shell shell.nix --run "bash build.sh $*"
+    if [[ -z ${WOC_IN_NIX_SHELL:-} ]] && command -v nix-shell >/dev/null; then
+        exec env WOC_IN_NIX_SHELL=1 nix-shell shell.nix --run "bash build.sh $*"
     fi
     echo 'Need pkg-config with vulkan and sdl3, cmake and ninja (see shell.nix).' >&2; exit 1
 fi
 read -r -a includes <<< "$(pkg-config --cflags vulkan sdl3)"
 read -r -a libraries <<< "$(pkg-config --libs vulkan sdl3)"
-# GPU library (shadPS4 video core + drivers), built by CMake into out/gpu/libbbgpu.so.
-# BB_PGO: generate (instrumented build that writes pgo/ while the game runs), use, off.
-# Default: use the profile in pgo/ when there is one. BB_LTO=OFF disables link-time optimization.
-pgo=${BB_PGO:-}
+# GPU library (shadPS4 video core + drivers), built by CMake into out/gpu/libwocgpu.so.
+# WOC_PGO: generate (instrumented build that writes pgo/ while the game runs), use, off.
+# Default: use the profile in pgo/ when there is one. WOC_LTO=OFF disables link-time optimization.
+pgo=${WOC_PGO:-}
 if [[ -z $pgo ]]; then
     if [[ -n $(find pgo -name '*.gcda' -print -quit 2>/dev/null) ]]; then pgo=use; else pgo=off; fi
 fi
@@ -49,28 +49,28 @@ if ! fsr_patches_apply --check 2>/dev/null; then
     git -C gpu/third_party/fsr-vulkan checkout -- .
 fi
 fsr_patches_apply
-cmake -S gpu -B out/gpu -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBB_PGO="$pgo" \
-    -DBB_LTO="${BB_LTO:-ON}" -DBB_PGO_DIR="$PWD/pgo" >/dev/null
-echo "GPU library: PGO $pgo, LTO ${BB_LTO:-ON}"
-# A failed GPU build must stop here: an older libbbgpu.so would otherwise be used silently.
-if ! ninja -C out/gpu bbgpu > out/gpu-build.log 2>&1; then
+cmake -S gpu -B out/gpu -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DWOC_PGO="$pgo" \
+    -DWOC_LTO="${WOC_LTO:-ON}" -DWOC_PGO_DIR="$PWD/pgo" >/dev/null
+echo "GPU library: PGO $pgo, LTO ${WOC_LTO:-ON}"
+# A failed GPU build must stop here: an older libwocgpu.so would otherwise be used silently.
+if ! ninja -C out/gpu wocgpu > out/gpu-build.log 2>&1; then
     grep -v '^\[' out/gpu-build.log | tail -40 >&2
     echo 'GPU library build failed (full log: out/gpu-build.log)' >&2; exit 1
 fi
 # Optional DLSS (NVIDIA RTX): DLSS_SDK_ROOT=<github.com/NVIDIA/DLSS checkout> builds the bridge
-# (gpu/dlss_bridge, the only code using NVIDIA's SDK) and puts it next to bb-probe with NVIDIA's
+# (gpu/dlss_bridge, the only code using NVIDIA's SDK) and puts it next to woc-probe with NVIDIA's
 # libnvidia-ngx-dlss.so. Without them the DLSS upscaler is listed as unavailable.
 if [[ -n ${DLSS_SDK_ROOT:-} ]]; then
     cmake -S gpu/dlss_bridge -B out/dlss-bridge -G Ninja -DCMAKE_BUILD_TYPE=Release \
         -DDLSS_SDK_ROOT="$DLSS_SDK_ROOT" >/dev/null
     ninja -C out/dlss-bridge >/dev/null
     rm -f out/libnvidia-ngx-dlss.so.*
-    cp out/dlss-bridge/libbbport_dlss.so "$DLSS_SDK_ROOT"/lib/Linux_x86_64/rel/libnvidia-ngx-dlss.so.* out/
+    cp out/dlss-bridge/libwocport_dlss.so "$DLSS_SDK_ROOT"/lib/Linux_x86_64/rel/libnvidia-ngx-dlss.so.* out/
     cp "$DLSS_SDK_ROOT/LICENSE.txt" out/NVIDIA-DLSS-LICENSE.txt
-    echo "DLSS bridge: out/libbbport_dlss.so"
+    echo "DLSS bridge: out/libwocport_dlss.so"
 fi
 # $ORIGIN/gpu: packaged copies keep the library next to the binary without patching it.
-gpu=(-Lout/gpu -lbbgpu -Wl,-rpath,'$ORIGIN/gpu' -Wl,-rpath,"$PWD/out/gpu" -rdynamic)
+gpu=(-Lout/gpu -lwocgpu -Wl,-rpath,'$ORIGIN/gpu' -Wl,-rpath,"$PWD/out/gpu" -rdynamic)
 runtime=(src/runtime*.c)
 # Third-party decoders: compiled once, without this project's -Werror policy.
 atrac9=(third_party/LibAtrac9/C/src/*.c)
@@ -79,10 +79,10 @@ if [[ ! -f out/libatrac9.a || -n $(find third_party/LibAtrac9/C/src -newer out/l
     for source in "${atrac9[@]}"; do "$CC" -std=c99 -O2 -g -w -c "$source" -o "out/atrac9/$(basename "${source%.c}").o"; done
     ar rcs out/libatrac9.a out/atrac9/*.o
 fi
-"$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -no-pie "${includes[@]}" -I. -Isrc src/probe.c "${runtime[@]}" src/vulkan_smoke.c out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/bb-probe
-echo "Built $PWD/out/bb-probe"
+"$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -no-pie "${includes[@]}" -I. -Isrc src/probe.c "${runtime[@]}" src/vulkan_smoke.c out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/woc-probe
+echo "Built $PWD/out/woc-probe"
 # GPU check for run.sh (live_resolution=auto) and the launcher's gamepad list (--gamepads).
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror "${includes[@]}" tools/gpu_capabilities.c "${libraries[@]}" -o out/bb-gpu-capabilities
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror "${includes[@]}" tools/gpu_capabilities.c "${libraries[@]}" -o out/woc-gpu-capabilities
 if [[ ${1:-} == --test ]]; then
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread "${includes[@]}" -I. -Isrc tests/test_pad.c "${libraries[@]}" -o out/pad-test
     out/pad-test

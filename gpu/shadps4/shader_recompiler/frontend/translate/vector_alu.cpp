@@ -2049,7 +2049,7 @@ void Translator::VMovRelDHelper(u32 dst_vgprno, const IR::U32 src_val, const IR:
     }
 }
 
-// bbport: the PS4 Pro's half precision VOP1 operations (GCN3 order from V_RCP_F16 = 84): worked
+// wocport: the PS4 Pro's half precision VOP1 operations (GCN3 order from V_RCP_F16 = 84): worked
 // out in single precision, the result rounded to half (an integer, for the exponent).
 void Translator::V_UNARY_F16(const GcnInst& inst) {
     const IR::F32 src0{GetSrc16<IR::F32>(inst.src[0])};

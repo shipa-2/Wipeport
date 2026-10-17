@@ -38,16 +38,16 @@ struct Profile {
     std::uint64_t buffer_copy_shader = 0;
     /// The port's temporal upscaler (FSR/DLSS/TAA, vk_temporal_upscaler.cpp) and what feeds it
     /// (camera and object motion, scene proxies) know this game's frame: where its scene, depth
-    /// and UI are. A game without it has its frame left as it draws it (as BB_UPSCALER=none):
+    /// and UI are. A game without it has its frame left as it draws it (as WOC_UPSCALER=none):
     /// placed in another frame, the upscaler replaced WipEout's scene with black.
     bool scene_upscaler = false;
 };
 
-/// Chooses the profile for the game by its TITLE_ID (bbgpu_init). BB_GAME_PROFILE=none runs the
+/// Chooses the profile for the game by its TITLE_ID (wocgpu_init). WOC_GAME_PROFILE=none runs the
 /// game as an unknown one (no profile), for checking the generic paths.
 void Select(const char* serial);
 
-/// The active profile, or nullptr (an unknown game, or BB_GAME_PROFILE=none).
+/// The active profile, or nullptr (an unknown game, or WOC_GAME_PROFILE=none).
 const Profile* Active();
 
 /// The active profile's buffer copy shader, or 0.

@@ -37,10 +37,10 @@ namespace Libraries::GnmDriver {
 bool SubmitLockOnDecode(); // gnmdriver.cpp
 }
 
-namespace BbCp {
+namespace WocCp {
 class Decoder;
 class RegisterObserver;
-} // namespace BbCp
+} // namespace WocCp
 
 namespace AmdGpu {
 
@@ -78,10 +78,10 @@ struct Liverpool {
     Regs regs{};
     std::array<CbDbExtent, NUM_COLOR_BUFFERS> last_cb_extent{};
     CbDbExtent last_db_extent{};
-    /// bbport: register blocks written since the last draw handed to the draw recording thread
+    /// wocport: register blocks written since the last draw handed to the draw recording thread
     /// (Rasterizer::PostDraw sends them along).
     RegDirty pipe_dirty;
-    /// bbport: fence writes handed to the draw recording thread and not yet done there: a
+    /// wocport: fence writes handed to the draw recording thread and not yet done there: a
     /// WaitRegMem on one of them is met in stream order without waiting for that thread.
     struct PendingFence {
         VAddr address;
@@ -93,12 +93,12 @@ struct Liverpool {
     void NotePendingFences(const auto& event);
     bool PendingFenceValue(VAddr address, u32& value);
     void NotePendingWrite(const struct PM4CmdWriteData& write_data, u32 num_bytes);
-    /// bbport: running checksum of graphics-register packets (see ApplyGraphicsRegisterPacket).
+    /// wocport: running checksum of graphics-register packets (see ApplyGraphicsRegisterPacket).
     u64 gfx_reg_checksum{};
-    /// bbport: the translator's own PM4 decoder (gpu/cp) over `regs`, and what it tells.
-    std::unique_ptr<BbCp::Decoder> cp_decoder;
-    std::unique_ptr<BbCp::RegisterObserver> cp_observer;
-    BbCp::Decoder& CpDecoder();
+    /// wocport: the translator's own PM4 decoder (gpu/cp) over `regs`, and what it tells.
+    std::unique_ptr<WocCp::Decoder> cp_decoder;
+    std::unique_ptr<WocCp::RegisterObserver> cp_observer;
+    WocCp::Decoder& CpDecoder();
     /// Top-level graphics submissions, numbered for the draw preparation workers.
     static constexpr u64 NoSeq = ~0ull;
     u64 gfx_submit_seq{};
@@ -108,7 +108,7 @@ struct Liverpool {
                                             RegDirty* dirty = nullptr);
 
 public:
-    /// bbport BB_CP_DECODER=1 (opt-in; else shadPS4's packet walk): graphics command buffers
+    /// wocport WOC_CP_DECODER=1 (opt-in; else shadPS4's packet walk): graphics command buffers
     /// are decoded by the translator's own decoder (gpu/cp/cp_decoder.h).
     static bool CpDecoderEnabled();
 
@@ -118,7 +118,7 @@ public:
     void SubmitGfx(std::span<const u32> dcb, std::span<const u32> ccb);
     void SubmitAsc(u32 gnm_vqid, std::span<const u32> acb);
 
-    /// `frame` (BB_SUBMIT_LOCK=frame): the guest's frame number, reported finished once the GPU
+    /// `frame` (WOC_SUBMIT_LOCK=frame): the guest's frame number, reported finished once the GPU
     /// has executed what was submitted until now on every queue, compute queues too (the game
     /// reuses the frame's memory then; the submission lock waited for all of them as well)
     /// (Libraries::GnmDriver::NoteFramesRetired).
@@ -138,14 +138,14 @@ public:
         submit_cv.wait(lk, [this] { return num_submits == 0; });
     }
 
-    /// bbport: also the draw recording thread and the fences it deferred are done (see
+    /// wocport: also the draw recording thread and the fences it deferred are done (see
     /// work_retired). sceGnmSubmitDone does not block the guest when this is true.
     bool IsGpuIdle() const {
         static const bool use_retired = [] {
-            const char* env = std::getenv("BB_WORK_RETIRED");
+            const char* env = std::getenv("WOC_WORK_RETIRED");
             return !(env && env[0] == '0');
         }();
-        // BB_SUBMIT_LOCK=decode with honest labels: decoded is enough.
+        // WOC_SUBMIT_LOCK=decode with honest labels: decoded is enough.
         return num_submits == 0 &&
                (work_retired || !use_retired || Libraries::GnmDriver::SubmitLockOnDecode());
     }
@@ -248,8 +248,8 @@ private:
 
     using CmdBuffer = std::pair<std::span<const u32>, std::span<const u32>>;
     CmdBuffer CopyCmdBuffers(std::span<const u32> dcb, std::span<const u32> ccb);
-    /// bbport: a submission's command buffers copied when the guest submits them
-    /// (BB_COPY_GPU_BUFFERS): the guest reused their memory before the GPU thread decoded
+    /// wocport: a submission's command buffers copied when the guest submits them
+    /// (WOC_COPY_GPU_BUFFERS): the guest reused their memory before the GPU thread decoded
     /// them ("PM4 type 0" from zeros or the next frame's commands, while an area loads).
     struct SubmittedCopy {
         std::vector<u32> data; ///< dcb, then ccb
@@ -286,7 +286,7 @@ private:
     u32 num_counter_pairs{};
     u64 pixel_counter{};
 
-    /// bbport: SET_PREDICATION. Draws and dispatches with the predicate bit in their header are
+    /// wocport: SET_PREDICATION. Draws and dispatches with the predicate bit in their header are
     /// skipped while it fails; it is evaluated at the first such packet, once the GPU has done
     /// the work before it (the results are GPU-written).
     struct Predication {
@@ -300,10 +300,10 @@ private:
         bool skip = false;
         bool draw_if_true = true;
         bool hint_no_wait = false;
-        u64 skipped = 0; ///< packets skipped so far (BB_PM4_SELFTEST)
+        u64 skipped = 0; ///< packets skipped so far (WOC_PM4_SELFTEST)
     } predication;
     bool PredicationSkips(const PM4Header* header);
-    /// bbport: waits until the GPU has done the work recorded before this point and its writes
+    /// wocport: waits until the GPU has done the work recorded before this point and its writes
     /// to [address, address + size) are in the game's memory (CP reads of GPU-written data:
     /// COND_EXEC, predication, COPY_DATA into a register).
     void SyncForCpuRead(VAddr address, u64 size);
@@ -331,23 +331,23 @@ private:
     const bool guest_markers_enabled;
     std::jthread process_thread{};
     std::atomic<u32> num_submits{};
-    /// BB_SUBMIT_LOCK=decode, under submit_mutex: graphics submissions made and decoded, and per frame
+    /// WOC_SUBMIT_LOCK=decode, under submit_mutex: graphics submissions made and decoded, and per frame
     /// sceGnmSubmitDone ended the graphics submissions made so far (count, frame number).
     u64 gfx_submitted = 0, gfx_decoded = 0;
     u64 decoded_total = 0; ///< submissions of every queue decoded (submissions_total)
-    void* last_decoded = nullptr; ///< BB_TIMELINE: the submission whose decoding began last
+    void* last_decoded = nullptr; ///< WOC_TIMELINE: the submission whose decoding began last
     std::deque<std::pair<u64, u64>> frame_ends;
     /// Frames whose graphics submissions are all decoded are reported finished once the GPU has
     /// executed the work recorded so far (GPU command thread).
     void SignalDecodedFrames();
-    /// BB_HONEST_LABELS: GPU idle once the GPU has finished the work up to `generation` and nothing
+    /// WOC_HONEST_LABELS: GPU idle once the GPU has finished the work up to `generation` and nothing
     /// was submitted since (the interrupt, work_retired).
     void SignalGpuIdle(u64 generation);
-    /// bbport: false from a submission until its draws and deferred fences are done (stage A
+    /// wocport: false from a submission until its draws and deferred fences are done (stage A
     /// decrements num_submits once it has decoded a submission, before that). Under
     /// submit_mutex with num_submits.
     std::atomic<bool> work_retired{true};
-    /// bbport: submissions so far (submit_mutex): BB_HONEST_LABELS GPU idle checks none came since.
+    /// wocport: submissions so far (submit_mutex): WOC_HONEST_LABELS GPU idle checks none came since.
     u64 submissions_total = 0;
     std::atomic<u32> num_commands{};
     std::atomic<bool> submit_done{};

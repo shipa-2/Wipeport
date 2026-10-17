@@ -138,7 +138,7 @@ struct Info : InfoPersistent {
     bool uses_image_atomic_float_min_max{};
     bool uses_lane_id{};
     bool uses_shader_clock{};
-    /// bbport BB_LAYER_MEMORY: some guest buffer goes through the page table (IsPagedBuffer).
+    /// wocport WOC_LAYER_MEMORY: some guest buffer goes through the page table (IsPagedBuffer).
     bool uses_paged_buffers{};
     bool uses_group_quad{};
     bool uses_group_shuffle{};
@@ -161,7 +161,7 @@ struct Info : InfoPersistent {
         : InfoPersistent(stage_, l_stage_, params.hash), pgm_base{params.Base()},
           user_data{params.user_data} {}
 
-    /// bbport: user data of this stage as a draw saw it. The GPU command thread refreshes
+    /// wocport: user data of this stage as a draw saw it. The GPU command thread refreshes
     /// user_data/flattened_ud_buf for every draw it decodes, while the draw recording thread
     /// (vk_draw_pipe.h) may still work on an earlier draw: that thread installs snapshots here.
     struct UdSnapshot {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// bbport cp: the translator's own PM4 decoder (step 2 of docs/TRANSLATOR_ARCHITECTURE.ru.md).
+// wocport cp: the translator's own PM4 decoder (step 2 of docs/TRANSLATOR_ARCHITECTURE.ru.md).
 //
 // A graphics command buffer is a stream of packets. The decoder walks it in stream order, applies
 // the register packets to its register file (the command processor's state: SET_*_REG, the
@@ -19,7 +19,7 @@
 
 #include "cp_pm4.h"
 
-namespace BbCp {
+namespace WocCp {
 
 /// The command processor's registers, by word index (register byte address / 4): its own
 /// storage, or the owner's (an array of Bank::End words laid out the same way).
@@ -249,4 +249,4 @@ private:
     Packet current{};
 };
 
-} // namespace BbCp
+} // namespace WocCp

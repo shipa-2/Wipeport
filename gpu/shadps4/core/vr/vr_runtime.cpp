@@ -233,7 +233,7 @@ void Runtime::Configure(bool psvr_supported, bool psvr_required) {
     }
     // An application driving a real headset on the other end of SHADPS4_VR_SOCKET is as
     // connected as a headset gets.
-    // bbport: no SHADPS4_VR_SOCKET host (AstroQuest's Quest link is not ported).
+    // wocport: no SHADPS4_VR_SOCKET host (AstroQuest's Quest link is not ported).
 #ifdef ENABLE_OPENXR_HOST
     // So is the headset of the machine itself, for a title that can do something with one. A
     // title that can do without only gets it if it is there already: one that comes later

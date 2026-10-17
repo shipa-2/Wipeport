@@ -195,7 +195,7 @@ void CollectShaderInfoPass(IR::Program& program, const Profile& profile) {
         LOG_ERROR(Render, "Enabling DMA for shader {:#x}", info.pgm_hash);
     }
 
-    // bbport BB_LAYER_MEMORY: buffers over nearly all memory read the page table. Every shader with
+    // wocport WOC_LAYER_MEMORY: buffers over nearly all memory read the page table. Every shader with
     // guest buffers gets it (a later permutation may have a paged buffer where the first one had
     // none, and the program's resource list comes from the first).
     if (profile.paged_buffers) {

@@ -40,7 +40,7 @@ struct Frame {
     u64 ready_tick;
     bool is_hdr{false};
     u8 id{};
-    /// bbport (AstroQuest's VR host): the headset swapchain image this frame is, or -1 for a
+    /// wocport (AstroQuest's VR host): the headset swapchain image this frame is, or -1 for a
     /// frame shown on the window.
     s8 host_buffer{-1};
 };
@@ -98,19 +98,19 @@ public:
 
     bool IsVideoOutSurface(const AmdGpu::ColorBuffer& color_buffer) const;
 
-    /// bbport (AstroQuest): composes a headset frame (both eyes side by side) into an image of
+    /// wocport (AstroQuest): composes a headset frame (both eyes side by side) into an image of
     /// the OpenXR swapchain and hands it to the host once the GPU is done. GPU thread.
     void PresentHmdFrame(const Libraries::VideoOut::HmdFrame& frame, u32 frame_id);
 
     Frame* PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& attribute,
                         VAddr cpu_address, VideoCore::ImageId source = {});
-    /// bbport: the window's picture of a headset frame (its left eye). GPU thread.
+    /// wocport: the window's picture of a headset frame (its left eye). GPU thread.
     Frame* PrepareHmdMirrorFrame(const Libraries::VideoOut::HmdFrame& frame);
 
     Frame* PrepareBlankFrame(bool present_thread);
 
     void Present(Frame* frame, bool is_reusing_frame = false, bool is_game_frame = true);
-    /// bbport: waits until the GPU has finished the commands that render `frame` (any thread).
+    /// wocport: waits until the GPU has finished the commands that render `frame` (any thread).
     void WaitRendered(const Frame* frame);
     Frame* PrepareLastFrame();
 
@@ -132,10 +132,10 @@ private:
     HostPasses::FsrPass::Settings fsr_settings{};
     HostPasses::PostProcessingPass::Settings pp_settings{};
     HostPasses::PostProcessingPass pp_pass;
-    std::mutex passes_mutex; ///< bbport: the passes are recorded on the recording threads
+    std::mutex passes_mutex; ///< wocport: the passes are recorded on the recording threads
     AmdGpu::Liverpool* liverpool;
     Scheduler draw_scheduler;
-    std::deque<u64> recent_frame_ticks; ///< bbport: BB_FRAMES_AHEAD bound (PrepareFrame)
+    std::deque<u64> recent_frame_ticks; ///< wocport: WOC_FRAMES_AHEAD bound (PrepareFrame)
     Scheduler present_scheduler;
     Scheduler flip_scheduler;
     Swapchain swapchain;
@@ -150,7 +150,7 @@ private:
     std::condition_variable free_cv;
     std::condition_variable_any frame_cv;
     std::vector<VAddr> vo_buffers_addr;
-    std::unique_ptr<VrExporter> vr_exporter; ///< bbport (AstroQuest): frames for the headset
+    std::unique_ptr<VrExporter> vr_exporter; ///< wocport (AstroQuest): frames for the headset
 };
 
 } // namespace Vulkan

@@ -3,8 +3,8 @@
 
 #include <xxhash.h>
 
-#include "bbport_toggles.h"
-#include "bbport_free_check.h"
+#include "wocport_toggles.h"
+#include "wocport_free_check.h"
 #include "common/assert.h"
 #include "common/debug.h"
 #include "common/div_ceil.h"
@@ -87,7 +87,7 @@ std::string TextureCache::DescribeImagesIn(VAddr addr, u64 size) {
 }
 
 void TextureCache::ProcessDownloadImages() {
-    // bbport: called for every fence (~450 a frame): the lock only when something is queued.
+    // wocport: called for every fence (~450 a frame): the lock only when something is queued.
     if (!downloads_queued.load(std::memory_order_acquire)) {
         return;
     }
@@ -122,7 +122,7 @@ void TextureCache::DownloadImageMemory(ImageId image_id, bool sync) {
         .imageOffset = {0, 0, 0},
         .imageExtent = {image.info.size.width, image.info.size.height, image.info.size.depth},
     };
-    // bbport BB_GUEST_IN_PLACE: the GPU copies the image into the game's memory itself, in stream
+    // wocport WOC_GUEST_IN_PLACE: the GPU copies the image into the game's memory itself, in stream
     // order: before the fences that follow, no wait here and no CPU copy afterwards.
     // Where the memory has a VRAM copy the GPU copies into that copy as well: buffers bound over
     // it read the image's data in stream order (issue #122: motion blur read a render target as a
@@ -158,8 +158,8 @@ void TextureCache::DownloadImageMemory(ImageId image_id, bool sync) {
     if (sync) {
         scheduler.Finish();
         download.Invalidate();
-        BbFreeCheck::Check(image.info.guest_address, download_size, download.mapped,
-                           BbFreeCheck::ImageDownload);
+        WocFreeCheck::Check(image.info.guest_address, download_size, download.mapped,
+                           WocFreeCheck::ImageDownload);
         Core::Memory::Instance()->TryWriteBacking(std::bit_cast<u8*>(image.info.guest_address),
                                                   download.mapped, download_size);
         if (!WriteTracking()) {
@@ -169,8 +169,8 @@ void TextureCache::DownloadImageMemory(ImageId image_id, bool sync) {
         scheduler.DeferPriorityOperation(
             [this, device_addr = image.info.guest_address, download, download_size] {
                 download.Invalidate();
-                BbFreeCheck::Check(device_addr, download_size, download.mapped,
-                                   BbFreeCheck::ImageDownload);
+                WocFreeCheck::Check(device_addr, download_size, download.mapped,
+                                   WocFreeCheck::ImageDownload);
                 Core::Memory::Instance()->TryWriteBacking(std::bit_cast<u8*>(device_addr),
                                                           download.mapped, download_size);
                 if (!WriteTracking()) {
@@ -225,10 +225,10 @@ void TextureCache::InvalidateMemory(VAddr addr, size_t size) {
     });
 }
 
-// bbport BB_IMAGE_WATCH=addr (diagnostics): how the image at that address is used (first 300).
+// wocport WOC_IMAGE_WATCH=addr (diagnostics): how the image at that address is used (first 300).
 void TextureCache::WatchImage(const Image& image, const char* what) {
     static const u64 watched = [] {
-        const char* env = std::getenv("BB_IMAGE_WATCH");
+        const char* env = std::getenv("WOC_IMAGE_WATCH");
         return env ? std::strtoull(env, nullptr, 0) : 0ull;
     }();
     if (!watched || image.info.guest_address != watched) {
@@ -243,10 +243,10 @@ void TextureCache::WatchImage(const Image& image, const char* what) {
 
 void TextureCache::InvalidateMemoryFromGPU(VAddr address, size_t max_size) {
     std::scoped_lock lock{mutex};
-    // bbport: only an image starting at `address` is affected, so the images over its first byte
+    // wocport: only an image starting at `address` is affected, so the images over its first byte
     // are all there is to look at (the whole range was walked for every GPU write binding).
     ForEachImageInRegion(address, 1, [&](ImageId image_id, Image& image) {
-        static const bool log = std::getenv("BB_IMAGE_SYNC_LOG") != nullptr;
+        static const bool log = std::getenv("WOC_IMAGE_SYNC_LOG") != nullptr;
         if (log) {
             static std::atomic<u32> printed{0};
             if (printed.fetch_add(1) < 200) {
@@ -628,7 +628,7 @@ ImageId TextureCache::FindImage(ImageDesc& desc, bool exact_fmt) {
         cached.format == info.pixel_format && cached.type == info.type &&
         cached.exact_fmt == exact_fmt && cached.binding == desc.type &&
         cached.levels == info.resources.levels && cached.layers == info.resources.layers &&
-        !BbToggle::Disabled(BbToggle::FindImageCache)) {
+        !WocToggle::Disabled(WocToggle::FindImageCache)) {
         Image& image = slot_images[cached.image_id];
         image.tick_accessed_last = scheduler.CurrentTick();
         TouchImage(image);
@@ -783,7 +783,7 @@ ImageView& TextureCache::FindTexture(ImageId image_id, const ImageDesc& desc, Vi
     if (refresh) {
         UpdateImage(image_id);
     }
-    if (memo && !BbToggle::Disabled(BbToggle::TextureViewMemo)) {
+    if (memo && !WocToggle::Disabled(WocToggle::TextureViewMemo)) {
         if (memo->image_id == image_id && memo->backing == image.backing && memo->view_id) {
             return slot_image_views[memo->view_id];
         }
@@ -874,7 +874,7 @@ void TextureCache::RefreshImage(Image& image) {
     if (False(image.flags & ImageFlagBits::Dirty) || image.info.num_samples > 1) {
         return;
     }
-    BbStats::Timer timer{BbStats::t_refresh};
+    WocStats::Timer timer{WocStats::t_refresh};
 
     RENDERER_TRACE;
     TRACE_HINT(fmt::format("{:x}:{:x}", image.info.guest_address, image.info.guest_size));
@@ -903,7 +903,7 @@ void TextureCache::RefreshImage(Image& image) {
     const u32 num_mips = image.info.resources.levels;
     const bool is_gpu_modified = True(image.flags & ImageFlagBits::GpuModified);
     const bool is_gpu_dirty = True(image.flags & ImageFlagBits::GpuDirty);
-    static const bool sync_log = std::getenv("BB_IMAGE_SYNC_LOG") != nullptr;
+    static const bool sync_log = std::getenv("WOC_IMAGE_SYNC_LOG") != nullptr;
     if (sync_log && is_gpu_dirty) {
         static std::atomic<u32> printed{0};
         if (printed.fetch_add(1) < 100) {
@@ -914,7 +914,7 @@ void TextureCache::RefreshImage(Image& image) {
     }
 
     if (sync_log) {
-        // BB_IMAGE_SYNC_LOG: the images refreshed most per 5 s (any reason), with their flags.
+        // WOC_IMAGE_SYNC_LOG: the images refreshed most per 5 s (any reason), with their flags.
         struct Refreshes {
             u64 count = 0, bytes = 0;
             u32 width = 0, height = 0, format = 0, tiling = 0, flags = 0;
@@ -947,7 +947,7 @@ void TextureCache::RefreshImage(Image& image) {
             window_start = now;
         }
     }
-    BbStats::image_upload_bytes.fetch_add(image.info.guest_size, std::memory_order_relaxed);
+    WocStats::image_upload_bytes.fetch_add(image.info.guest_size, std::memory_order_relaxed);
     boost::container::small_vector<vk::BufferImageCopy, 14> image_copies;
     for (u32 m = 0; m < num_mips; m++) {
         const u32 width = std::max(image.info.size.width >> m, 1u);
@@ -1021,16 +1021,16 @@ vk::Sampler TextureCache::GetSampler(const AmdGpu::Sampler& sampler,
 }
 
 void TextureCache::RegisterImage(ImageId image_id) {
-    BbStats::images_registered.fetch_add(1, std::memory_order_relaxed);
+    WocStats::images_registered.fetch_add(1, std::memory_order_relaxed);
     Image& image = slot_images[image_id];
     ASSERT_MSG(False(image.flags & ImageFlagBits::Registered),
                "Trying to register an already registered image");
     image.flags |= ImageFlagBits::Registered;
     ++registry_generation;
     total_used_memory += Common::AlignUp(image.info.guest_size, 1024);
-    BbStats::live_image_bytes.fetch_add(Common::AlignUp(image.info.guest_size, 1024),
+    WocStats::live_image_bytes.fetch_add(Common::AlignUp(image.info.guest_size, 1024),
                                         std::memory_order_relaxed);
-    BbStats::live_images.fetch_add(1, std::memory_order_relaxed);
+    WocStats::live_images.fetch_add(1, std::memory_order_relaxed);
     image.lru_id = lru_cache.Insert(image_id, gc_tick);
     image.lru_touched_tick = gc_tick;
     ForEachPage(image.info.guest_address, image.info.guest_size,
@@ -1045,9 +1045,9 @@ void TextureCache::UnregisterImage(ImageId image_id) {
     ++registry_generation;
     lru_cache.Free(image.lru_id);
     total_used_memory -= Common::AlignUp(image.info.guest_size, 1024);
-    BbStats::live_image_bytes.fetch_sub(Common::AlignUp(image.info.guest_size, 1024),
+    WocStats::live_image_bytes.fetch_sub(Common::AlignUp(image.info.guest_size, 1024),
                                         std::memory_order_relaxed);
-    BbStats::live_images.fetch_sub(1, std::memory_order_relaxed);
+    WocStats::live_images.fetch_sub(1, std::memory_order_relaxed);
     ForEachPage(image.info.guest_address, image.info.guest_size, [this, image_id](u64 page) {
         const auto page_it = page_table.find(page);
         if (page_it == nullptr) {
@@ -1175,14 +1175,14 @@ void TextureCache::UntrackImageTail(ImageId image_id) {
 void TextureCache::GarbageCollectImages() {
     if (instance.CanReportMemoryUsage()) {
         total_used_memory = instance.GetDeviceMemoryUsage();
-        // bbport: on integrated GPUs (Steam Deck) the usage covers system-memory heaps holding
+        // wocport: on integrated GPUs (Steam Deck) the usage covers system-memory heaps holding
         // much more than images (buffers backing guest memory), and the startup budget left
         // ~1 GB after its 8 GB system reserve: usage stayed above the critical mark, so the
         // collector evicted images used two or three frames ago on every submission and wrote
         // GPU-written ones back. Compare with the driver's current budget instead.
-        // BB_GC_BUDGET_MB=N: this rule with a fixed budget on any GPU (tests on a desktop).
+        // WOC_GC_BUDGET_MB=N: this rule with a fixed budget on any GPU (tests on a desktop).
         static const u64 forced_budget = [] {
-            const char* env = std::getenv("BB_GC_BUDGET_MB");
+            const char* env = std::getenv("WOC_GC_BUDGET_MB");
             return env ? std::strtoull(env, nullptr, 10) << 20 : 0;
         }();
         if (instance.IsIntegrated() || forced_budget) {
@@ -1194,20 +1194,20 @@ void TextureCache::GarbageCollectImages() {
             }
         }
     }
-    BbStats::gc_used_bytes.store(total_used_memory, std::memory_order_relaxed);
-    BbStats::gc_trigger_bytes.store(trigger_gc_memory, std::memory_order_relaxed);
-    BbStats::gc_critical_bytes.store(critical_gc_memory, std::memory_order_relaxed);
-    // bbport: gc_tick (one per guest submission, hundreds a second) at each of the last 64
+    WocStats::gc_used_bytes.store(total_used_memory, std::memory_order_relaxed);
+    WocStats::gc_trigger_bytes.store(trigger_gc_memory, std::memory_order_relaxed);
+    WocStats::gc_critical_bytes.store(critical_gc_memory, std::memory_order_relaxed);
+    // wocport: gc_tick (one per guest submission, hundreds a second) at each of the last 64
     // seconds, for ages in seconds. The usage compared is all of our VRAM, not only images: on a
     // discrete GPU it stays over the trigger, where an age of 16 ticks (~3 frames) evicted every
     // texture briefly off screen and uploaded it again. Below the pressure mark an image goes
-    // once unused for BB_GC_IDLE_SECONDS (20): the textures of an area left behind.
+    // once unused for WOC_GC_IDLE_SECONDS (20): the textures of an area left behind.
     const u64 second = u64(std::chrono::duration_cast<std::chrono::seconds>(
                                std::chrono::steady_clock::now().time_since_epoch())
                                .count());
     if (second != gc_second) {
         gc_second = second;
-        // bbport: the driver's budget for our process, once a second: near it the collector evicts
+        // wocport: the driver's budget for our process, once a second: near it the collector evicts
         // by submissions (as before 0.5) rather than keeping textures for seconds (NoteVramShort).
         if (instance.CanReportMemoryUsage() && !instance.IsIntegrated()) {
             const u64 budget = instance.GetDeviceMemoryBudgetNow();
@@ -1216,27 +1216,27 @@ void TextureCache::GarbageCollectImages() {
                 vram_short_until.store(second + 2, std::memory_order_relaxed);
             }
         }
-        BbStats::coarse_second.store(u32(second), std::memory_order_relaxed);
+        WocStats::coarse_second.store(u32(second), std::memory_order_relaxed);
         gc_tick_at_second[second % gc_tick_at_second.size()] = gc_tick;
     }
-    if (BbToggle::Disabled(BbToggle::TextureCollector)) {
+    if (WocToggle::Disabled(WocToggle::TextureCollector)) {
         return;
     }
     if (total_used_memory < trigger_gc_memory) {
         return;
     }
     static const u64 idle_seconds = [] {
-        const char* env = std::getenv("BB_GC_IDLE_SECONDS");
+        const char* env = std::getenv("WOC_GC_IDLE_SECONDS");
         return std::clamp<u64>(env ? std::strtoull(env, nullptr, 10) : 20, 1, 63);
     }();
-    // Under pressure an image goes once unused for BB_GC_PRESSURE_IDLE_SECONDS (5), over the
+    // Under pressure an image goes once unused for WOC_GC_PRESSURE_IDLE_SECONDS (5), over the
     // critical mark for 1 s first, and only then by submissions as before (80/160 ticks, a
     // fraction of a second). On cards up to 8 GB the pressure mark is 40 % of the budget: the
     // usage stayed over it, so textures off screen for a moment were evicted and uploaded again
     // when the camera turned back (9000 a minute with a 4.5 GB budget), read over the bus each
     // time: NVIDIA testers saw the frame rate fall the longer they played.
     static const u64 pressure_idle_seconds = [] {
-        const char* env = std::getenv("BB_GC_PRESSURE_IDLE_SECONDS");
+        const char* env = std::getenv("WOC_GC_PRESSURE_IDLE_SECONDS");
         return std::clamp<u64>(env ? std::strtoull(env, nullptr, 10) : 5, 0, 63);
     }();
     // The tick at the start of that second (an older one where no submission came then).
@@ -1273,25 +1273,25 @@ void TextureCache::GarbageCollectImages() {
         auto& image = slot_images[image_id];
         const bool download = image.SafeToDownload();
         const bool tiled = image.info.IsTiled();
-        // bbport: images that cannot go now (GPU-written: their contents exist only here, and
+        // wocport: images that cannot go now (GPU-written: their contents exist only here, and
         // tiled ones cannot be written back at all) neither use up the deletions nor stay first
         // in line. The oldest ten being such render targets stopped the collector for good, and
         // VRAM grew with every area visited up to the pressure mark (~10 GB on 16 GB).
         if ((tiled && download) || (download && !pressured)) {
             lru_cache.Touch(image.lru_id, gc_tick);
-            BbStats::gc_kept_images.fetch_add(1, std::memory_order_relaxed);
+            WocStats::gc_kept_images.fetch_add(1, std::memory_order_relaxed);
             return false;
         }
         --num_deletions;
         if (download) {
-            // bbport: synchronously, while the image still protects its pages. A deferred
+            // wocport: synchronously, while the image still protects its pages. A deferred
             // write-back landed after FreeImage had unprotected them, over whatever the game
             // had meanwhile stored there (e.g. its heap after unloading an area).
             DownloadImageMemory(image_id, true);
             ++gc_downloads;
         }
         ++gc_evictions;
-        BbStats::gc_freed_images.fetch_add(1, std::memory_order_relaxed);
+        WocStats::gc_freed_images.fetch_add(1, std::memory_order_relaxed);
         FreeImage(image_id);
         if (total_used_memory < critical_gc_memory) {
             if (aggresive) {
@@ -1321,7 +1321,7 @@ void TextureCache::GarbageCollectImages() {
         configure(true, true);
         lru_cache.ForEachItemBelow(below_tick, clean_up);
     }
-    // bbport: evictions under memory pressure, at most every 5 s (BB_FRAME_STATS or not).
+    // wocport: evictions under memory pressure, at most every 5 s (WOC_FRAME_STATS or not).
     if (pressured || gc_downloads != 0) {
         const auto now = std::chrono::steady_clock::now();
         if (now - gc_report_time >= std::chrono::seconds(5)) {

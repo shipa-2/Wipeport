@@ -8,7 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "bbport_toggles.h"
+#include "wocport_toggles.h"
 
 #include "video_core/host_shaders/camera_motion_comp.h"
 #include "video_core/host_shaders/camera_motion_debug_comp.h"
@@ -75,11 +75,11 @@ std::array<float, 12> InverseAffine(const std::array<float, 12>& m) {
 CameraMotion::CameraMotion(const Instance& instance_, Scheduler& scheduler_,
                            VideoCore::TextureCache& texture_cache_, Runtime& runtime_)
     : instance{instance_}, scheduler{scheduler_}, texture_cache{texture_cache_}, runtime{runtime_} {
-    const char* env = std::getenv("BB_DEBUG_MOTION");
+    const char* env = std::getenv("WOC_DEBUG_MOTION");
     debug_overlay = env && env[0] == '1';
-    const char* upscaler = std::getenv("BB_UPSCALER");
+    const char* upscaler = std::getenv("WOC_UPSCALER");
     // The upscaler can be switched on from the menu at any time: the camera is always tracked
-    // unless BB_UPSCALER=none.
+    // unless WOC_UPSCALER=none.
     for_upscaler = !(upscaler && std::strcmp(upscaler, "none") == 0) && Game::SceneUpscaler();
     const auto device = instance.GetDevice();
     if (for_upscaler) {
@@ -232,7 +232,7 @@ void CameraMotion::RecordMotion(vk::ImageView depth_view, vk::ImageView motion_v
         .previous_jitter = previous_jitter,
         .mode = object_valid ? 1u : 0u,
     };
-    // bbport: everything the pass reads is captured: it may be recorded on a recording thread
+    // wocport: everything the pass reads is captured: it may be recorded on a recording thread
     // while this thread goes on with the next frame's camera.
     scheduler.RecordCrumb({.name = "camera motion"}, [push, depth_view, motion_view, object_view, width, height,
                       pipeline = *motion_pipeline,
@@ -270,7 +270,7 @@ void CameraMotion::OnConstants(const float* data) {
         std::abs(data[1] * data[0] - 1.0f) > 1e-3f) {
         return;
     }
-    // bbport: the first constants of each G-buffer pass are its camera. A frame may have more
+    // wocport: the first constants of each G-buffer pass are its camera. A frame may have more
     // than one such pass (another camera before the main scene): the camera goes with the pass
     // whose depth the motion vectors use (CommitFrameCamera), not with the frame's first pass.
     if (pass_has_camera) {
@@ -278,10 +278,10 @@ void CameraMotion::OnConstants(const float* data) {
     }
     std::memcpy(pass_camera.view.data(), data + 8, 12 * sizeof(float));
     std::memcpy(pass_camera.inv_view.data(), data + 180, 12 * sizeof(float));
-    // bbport: BB_CAMERA_INVERSE=own: the inverse of the view matrix itself instead of the one the
-    // game stores beside it (A/B; they agree to float precision). BB_CAMERA_LOG prints the gap.
+    // wocport: WOC_CAMERA_INVERSE=own: the inverse of the view matrix itself instead of the one the
+    // game stores beside it (A/B; they agree to float precision). WOC_CAMERA_LOG prints the gap.
     static const bool own_inverse = [] {
-        const char* env = std::getenv("BB_CAMERA_INVERSE");
+        const char* env = std::getenv("WOC_CAMERA_INVERSE");
         return env && std::strcmp(env, "own") == 0;
     }();
     const auto computed_inverse = InverseAffine(pass_camera.view);
@@ -290,12 +290,12 @@ void CameraMotion::OnConstants(const float* data) {
         inverse_gap = std::max(inverse_gap, std::abs(computed_inverse[i] - pass_camera.inv_view[i]));
     }
     const auto game_inverse = pass_camera.inv_view;
-    if (own_inverse != BbToggle::Disabled(BbToggle::CameraOwnInverse)) {
+    if (own_inverse != WocToggle::Disabled(WocToggle::CameraOwnInverse)) {
         pass_camera.inv_view = computed_inverse;
     }
-    // bbport: BB_CAMERA_LOG=1 prints the camera position every 100 ms (scripted tests of how far
+    // wocport: WOC_CAMERA_LOG=1 prints the camera position every 100 ms (scripted tests of how far
     // the player moves in a given time at different frame rates).
-    static const bool camera_log = std::getenv("BB_CAMERA_LOG") != nullptr;
+    static const bool camera_log = std::getenv("WOC_CAMERA_LOG") != nullptr;
     if (camera_log) {
         using Clock = std::chrono::steady_clock;
         static const auto start = Clock::now();
@@ -309,19 +309,19 @@ void CameraMotion::OnConstants(const float* data) {
                         computed_inverse[11], inverse_gap);
         }
     }
-    // bbport: the projection as the motion shaders use it: ndc +y down the screen. 0.2 assumed the
+    // wocport: the projection as the motion shaders use it: ndc +y down the screen. 0.2 assumed the
     // viewport flips y (ndc +y up, as at Yahar'gul: yscale -540), 0.3 that it does not; the
-    // viewport of the frame's G-buffer pass decides (BB_CAMERA_Y=up/down forces one, for tests).
+    // viewport of the frame's G-buffer pass decides (WOC_CAMERA_Y=up/down forces one, for tests).
     static const float forced_y = [] {
-        const char* env = std::getenv("BB_CAMERA_Y");
+        const char* env = std::getenv("WOC_CAMERA_Y");
         return !env ? 0.0f : std::strcmp(env, "up") == 0 ? -1.0f : std::strcmp(env, "down") == 0 ? 1.0f : 0.0f;
     }();
     const float y_sign = (forced_y != 0.0f ? forced_y : gbuffer_y_sign) *
-                         (BbToggle::Disabled(BbToggle::CameraYFlip) ? -1.0f : 1.0f);
+                         (WocToggle::Disabled(WocToggle::CameraYFlip) ? -1.0f : 1.0f);
     pass_camera.proj = {data[52] * gbuffer_x_sign, data[57] * y_sign,
                     data[62], data[63]};
     {
-        // bbport: the projection's y scale sign, printed when it changes (see the G-buffer
+        // wocport: the projection's y scale sign, printed when it changes (see the G-buffer
         // viewport line): which way view +y goes on the screen.
         static int last_sign = 0;
         const int sign = (data[57] < 0.0f ? -2 : 2) + (gbuffer_y_sign < 0.0f ? -1 : 1);
@@ -444,10 +444,10 @@ void CameraMotion::Overlay(VideoCore::ImageId frame) {
         .size = {float(color.info.size.width), float(color.info.size.height)},
         .jitter = jitter,
         .previous_jitter = previous_jitter,
-        .mode = BbToggle::Disabled(1u << 20)   ? 1u
-                : BbToggle::Disabled(1u << 21) ? 2u
-                : BbToggle::Disabled(1u << 22) ? 3u
-                : BbToggle::Disabled(1u << 23) ? 4u
+        .mode = WocToggle::Disabled(1u << 20)   ? 1u
+                : WocToggle::Disabled(1u << 21) ? 2u
+                : WocToggle::Disabled(1u << 22) ? 3u
+                : WocToggle::Disabled(1u << 23) ? 4u
                                                : 0u,
     };
     static u32 log_counter = 0;

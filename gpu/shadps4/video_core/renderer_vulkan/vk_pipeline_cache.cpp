@@ -34,10 +34,10 @@
 #include "video_core/renderer_vulkan/vk_shader_util.h"
 #include "video_core/buffer_cache/buffer.h"
 #include "video_core/buffer_cache/buffer_cache.h"
-#include "bbport_guest_memory.h"
-#include "bbport_settings.h"
+#include "wocport_guest_memory.h"
+#include "wocport_settings.h"
 #include "game_profile.h"
-#include "bbport_toggles.h"
+#include "wocport_toggles.h"
 
 namespace Vulkan {
 
@@ -340,9 +340,9 @@ PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
         .supports_shader_subgroup_clock = instance_.IsShaderSubgroupClockSupported(),
         .needs_manual_interpolation = instance.IsFragmentShaderBarycentricSupported() &&
                                       instance.GetDriverID() == vk::DriverId::eNvidiaProprietary,
-        // bbport: older NVIDIA (Pascal) has no barycentrics; BB_INTERP_INT_FIX=0/1 overrides.
+        // wocport: older NVIDIA (Pascal) has no barycentrics; WOC_INTERP_INT_FIX=0/1 overrides.
         .needs_integer_interpolation_fix = [&] {
-            if (const char* env = std::getenv("BB_INTERP_INT_FIX")) {
+            if (const char* env = std::getenv("WOC_INTERP_INT_FIX")) {
                 return env[0] == '1';
             }
             return !instance.IsFragmentShaderBarycentricSupported() &&
@@ -354,7 +354,7 @@ PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
         .needs_unorm_fixup = instance.GetDriverID() == vk::DriverId::eMesaKosmickrisp,
         .needs_clip_distance_emulation = instance.GetDriverID() == vk::DriverId::eNvidiaProprietary,
         .supports_shader_stencil_export = instance_.IsShaderStencilExportSupported(),
-        // bbport BB_LAYER_MEMORY: buffers over nearly all memory go through the page table.
+        // wocport WOC_LAYER_MEMORY: buffers over nearly all memory go through the page table.
         .paged_buffers = VideoCore::BufferCache::LayerPagedActive(),
         // The game's buffer copy shader, from its profile (games/).
         .buffer_copy_shader_hash = Game::BufferCopyShader(),
@@ -367,7 +367,7 @@ PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
     pipeline_cache = std::move(cache);
 }
 
-/// bbport BB_ASYNC_PIPELINES: worker threads creating graphics pipelines (the driver's compile,
+/// wocport WOC_ASYNC_PIPELINES: worker threads creating graphics pipelines (the driver's compile,
 /// vkCreateGraphicsPipelines, with its own VkPipelineCache synchronization). Jobs run in order.
 class PipelineCompiler {
 public:
@@ -428,17 +428,17 @@ struct PipelineCache::PendingPipeline {
 
 PipelineCache::~PipelineCache() = default;
 
-// bbport: shader/pipeline compile time on the GPU thread, reported by BB_FRAME_STATS.
-std::atomic<u64> g_bb_compile_ns;
-std::atomic<u32> g_bb_compiles;
+// wocport: shader/pipeline compile time on the GPU thread, reported by WOC_FRAME_STATS.
+std::atomic<u64> g_woc_compile_ns;
+std::atomic<u32> g_woc_compiles;
 namespace {
 struct CompileTimer {
     std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
     ~CompileTimer() {
-        g_bb_compile_ns += u64(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        g_woc_compile_ns += u64(std::chrono::duration_cast<std::chrono::nanoseconds>(
                                    std::chrono::steady_clock::now() - start)
                                    .count());
-        ++g_bb_compiles;
+        ++g_woc_compiles;
     }
 };
 } // namespace
@@ -485,7 +485,7 @@ const GraphicsPipeline* PipelineCache::TryPreparedPipeline(const PreparedDraw& p
 }
 
 namespace {
-/// bbport BB_ASYNC_PIPELINES: per render target (its address), how many frames in a row draws
+/// wocport WOC_ASYNC_PIPELINES: per render target (its address), how many frames in a row draws
 /// went to it. Only the GPU thread (pipeline selection) touches it.
 struct TargetStreak {
     u32 last_frame = ~0u;
@@ -509,7 +509,7 @@ u64 DrawTarget(const AmdGpu::Regs& regs) {
 void NoteDrawTarget(const AmdGpu::Regs& regs) {
     static u64 last_target = 0;
     static u32 last_frame = ~0u;
-    const u32 frame = BbStats::frame_number.load(std::memory_order_relaxed);
+    const u32 frame = WocStats::frame_number.load(std::memory_order_relaxed);
     const u64 target = DrawTarget(regs);
     if (target == 0 || (target == last_target && frame == last_frame)) {
         return;
@@ -542,7 +542,7 @@ const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectPar
     if (const auto found = graphics_pipelines.find(sel.graphics_key); found != graphics_pipelines.end()) {
         return found->second.get();
     }
-    // bbport BB_ASYNC_PIPELINES: being compiled on a worker, or to be.
+    // wocport WOC_ASYNC_PIPELINES: being compiled on a worker, or to be.
     const bool skippable = AsyncSkippable(sel, indirect);
     if (const auto pending = pending_graphics.find(sel.graphics_key); pending != pending_graphics.end()) {
         const std::shared_ptr<PendingPipeline> job = pending->second;
@@ -556,7 +556,7 @@ const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectPar
                 // A pass that is not drawn every frame needs it now: the wait is compile time.
                 const auto start = std::chrono::steady_clock::now();
                 job->cv.wait(lk, [&] { return job->done; });
-                g_bb_compile_ns += u64(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                g_woc_compile_ns += u64(std::chrono::duration_cast<std::chrono::nanoseconds>(
                                            std::chrono::steady_clock::now() - start)
                                            .count());
                 ++async_waited;
@@ -567,19 +567,19 @@ const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectPar
     }
     if (skippable) {
         if (!compiler) {
-            const char* env = std::getenv("BB_ASYNC_PIPELINE_THREADS");
+            const char* env = std::getenv("WOC_ASYNC_PIPELINE_THREADS");
             const u32 threads = env && *env ? u32(std::strtoul(env, nullptr, 10))
                                             : std::clamp(std::thread::hardware_concurrency() / 4, 1u, 4u);
             compiler = std::make_unique<PipelineCompiler>(std::max(threads, 1u));
             std::printf("GPU: new pipelines of passes drawn every frame compile on %u threads "
-                        "(BB_ASYNC_PIPELINES=0: on the GPU thread, the game waits)\n",
+                        "(WOC_ASYNC_PIPELINES=0: on the GPU thread, the game waits)\n",
                         std::max(threads, 1u));
         }
         auto job = std::make_shared<PendingPipeline>();
         job->modules = sel.modules;
         pending_graphics.emplace(sel.graphics_key, job);
         ++async_started;
-        ++g_bb_compiles;
+        ++g_woc_compiles;
         compiler->Submit([this, job, key = sel.graphics_key, infos = sel.infos,
                           runtime_infos = sel.runtime_infos, fetch = sel.fetch_shader,
                           modules = sel.modules]() mutable {
@@ -647,7 +647,7 @@ bool PipelineCache::AsyncSkippable(const PipelineSelection& selection, bool indi
     // depend on the draw's vertex buffers (VK_EXT_vertex_input_dynamic_state). A size rule (the
     // scene's, the output's) missed most passes: many set a 16384 scissor.
     static const bool enabled = [] {
-        const char* env = std::getenv("BB_ASYNC_PIPELINES");
+        const char* env = std::getenv("WOC_ASYNC_PIPELINES");
         return !(env && env[0] == '0');
     }();
     if (!enabled || !instance.IsVertexInputDynamicState() || !selection.regs) {
@@ -655,14 +655,14 @@ bool PipelineCache::AsyncSkippable(const PipelineSelection& selection, bool indi
     }
     static u32 frame_seen = ~0u;
     static u64 draws_at_start = 0, last_frame_draws = 0;
-    const u32 frame = BbStats::frame_number.load(std::memory_order_relaxed);
-    const u64 draws = BbStats::draws.load(std::memory_order_relaxed);
+    const u32 frame = WocStats::frame_number.load(std::memory_order_relaxed);
+    const u64 draws = WocStats::draws.load(std::memory_order_relaxed);
     if (frame != frame_seen) {
         last_frame_draws = draws - draws_at_start;
         draws_at_start = draws;
         frame_seen = frame;
         static u32 printed = 0;
-        const u32 second = BbStats::coarse_second.load(std::memory_order_relaxed);
+        const u32 second = WocStats::coarse_second.load(std::memory_order_relaxed);
         if (async_started != 0 && second - printed >= 5) {
             printed = second;
             std::printf("GPU: %llu pipelines compiled in the background, %llu draws went without "
@@ -807,10 +807,10 @@ bool PipelineCache::RefreshGraphicsKey(PipelineSelection& sel) {
                 }
             }
         }
-        // BB_MOTION_SELECT_LOG=1: each G-buffer vertex shader once, with its buffer sizes
+        // WOC_MOTION_SELECT_LOG=1: each G-buffer vertex shader once, with its buffer sizes
         // and the selection, to find animated models that the size rule leaves out.
         static const bool select_log = [] {
-            const char* value = std::getenv("BB_MOTION_SELECT_LOG");
+            const char* value = std::getenv("WOC_MOTION_SELECT_LOG");
             return value && value[0] == '1';
         }();
         if (select_log && vs) {
@@ -831,7 +831,7 @@ bool PipelineCache::RefreshGraphicsKey(PipelineSelection& sel) {
         }
         // Keep the old broad path available for visual A/B tests.
         static const bool all_motion = [] {
-            const char* value = std::getenv("BB_OBJECT_MOTION_ALL");
+            const char* value = std::getenv("WOC_OBJECT_MOTION_ALL");
             return value && value[0] == '1';
         }();
         if (all_motion) {
@@ -886,7 +886,7 @@ bool PipelineCache::RefreshGraphicsKey(PipelineSelection& sel) {
         key.color_samples[mv] = 1;
     }
 
-    // bbport: colour attachments of one pass must have one sample count (Vulkan, without
+    // wocport: colour attachments of one pass must have one sample count (Vulkan, without
     // multisampledRenderToSingleSampled; the mixed-samples extensions only let colour differ from
     // depth): WipEout's G-buffer pass has a 4x colour target with two 1x R16G16 targets
     // (VUID-VkRenderingInfo-imageView-09429), and its opaque geometry was lost. They all get the
@@ -1087,7 +1087,7 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
                                                 Shader::Backend::Bindings& binding) {
     auto runtime_info = BuildRuntimeInfo(sel, hw_stage, sw_stage);
     if (sel.worker) {
-        // bbport: draw-preparation worker: look up only, with the worker's own Info copy.
+        // wocport: draw-preparation worker: look up only, with the worker's own Info copy.
         auto& worker = *sel.worker;
         std::shared_lock lk{programs_mutex};
         const auto found_program = program_cache.find(params.hash);
@@ -1164,7 +1164,7 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
 
     vk::ShaderModule module{};
 
-    // bbport: consecutive draws of a program almost always use the same permutation.
+    // wocport: consecutive draws of a program almost always use the same permutation.
     auto it = program->last_used < program->modules.size() &&
                       program->modules[program->last_used].spec == spec
                   ? program->modules.begin() + program->last_used

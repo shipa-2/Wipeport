@@ -2,12 +2,12 @@
 
 ## Частота кадров, звук, диагностика (2026-09-25)
 
-- **FPS**: `BB_FPS=uncap` (по умолчанию) применяет патч «Uncap FPS++»
+- **FPS**: `WOC_FPS=uncap` (по умолчанию) применяет патч «Uncap FPS++»
   (Lance McDonald, Kyo) из `patches/Bloodborne.xml`: интервал флипа 1 и
   шаги симуляции от реального дельтатайма кадра. Vblank при этом следует за
-  частотой монитора (`BB_VBLANK_HZ=0`). `BB_FPS=60`/`90` — патчи с
-  фиксированным шагом, `BB_FPS=30` — без патчей. Дополнительные патчи из XML:
-  `BB_PATCHES="Skip Intro;Disable Motion Blur (perf increase)"`.
+  частотой монитора (`WOC_VBLANK_HZ=0`). `WOC_FPS=60`/`90` — патчи с
+  фиксированным шагом, `WOC_FPS=30` — без патчей. Дополнительные патчи из XML:
+  `WOC_PATCHES="Skip Intro;Disable Motion Blur (perf increase)"`.
   `patches.py` компилирует их в `out/patches.bin`; адреса в XML — это
   виртуальные адреса PS4 (база eboot 0x400000), загрузчик пишет их по
   смещению `адрес-0x400000` после релокаций (`--patches`).
@@ -32,12 +32,12 @@
     (`Scheduler::Record`, команды и их данные в блоках по 128 КиБ; draw,
     dispatch, дескрипторы, барьеры, копирования, dynamic state, детайлинг).
     `CommandBuffer()` для непереведённого кода синхронизируется и включает
-    прямую запись до конца draw. `BB_VK_RECORD_THREAD=0` — старое поведение.
+    прямую запись до конца draw. `WOC_VK_RECORD_THREAD=0` — старое поведение.
   - Кеш описаний текстур (`ImageDesc`) по T# и флагам ресурса, кеш
     `FindImage`, проверка изменённых страниц без блокировки для привязок
     только на чтение, загрузка гостевых данных буферов в потоке записи.
   - Замер в одной сцене: все оптимизации 64 FPS, без них 40 FPS (×1.6).
-  - `BB_TOGGLE_FILE=<файл>`: маска выключенных оптимизаций, меняется во время
+  - `WOC_TOGGLE_FILE=<файл>`: маска выключенных оптимизаций, меняется во время
     игры (1 кеш регионов, 2 кеш fetch-шейдеров, 4 ранний выход трекинга
     страниц, 8 лимит опроса драйвера, 16 поток записи, 32 кеш текстур,
     64 проверка страниц без блокировки, 128 кеш FindImage, 256 загрузка
@@ -46,13 +46,13 @@
 - **Звук**: при старте для Bloodborne выставляется флаг `0x204E` в
   `SPRJ0005/userdata0010` (хак rainvmaker из форка Diegolix29): с нулевым
   флагом часть звуков, например оружие игрока, не проигрывается.
-  `BB_SOUND_HACK=0` отключает.
+  `WOC_SOUND_HACK=0` отключает.
   Профилирование без perf: загрузчик по SIGUSR2 печатает RIP, `rdi` (адрес
   мьютекса при ожидании futex) и цепочку кадров потока; GPU-библиотека
   собирается с `-fno-omit-frame-pointer`.
-- **Диагностика**: `BB_FRAME_STATS=1` — FPS, худший кадр и время компиляции
-  шейдеров/пайплайнов раз в 5 с; `BB_AUDIO_STATS=1` — ритм и заполнение
-  очереди звука; `BB_AUDIO_DUMP=путь` — сырой PCM каждого порта.
+- **Диагностика**: `WOC_FRAME_STATS=1` — FPS, худший кадр и время компиляции
+  шейдеров/пайплайнов раз в 5 с; `WOC_AUDIO_STATS=1` — ритм и заполнение
+  очереди звука; `WOC_AUDIO_DUMP=путь` — сырой PCM каждого порта.
 
 ## Текущее состояние (2026-09-25)
 
@@ -77,8 +77,8 @@ caller `0xd18a6a`.
   хранит владельца как `scePthreadSelf() & 0xffffffffff` и сравнивает с полным
   значением. С хэндлами `0x7f…` это давало вечную взаимоблокировку.
 - Watchdog (`--timeout`) печатает RIP и цепочку кадров всех потоков
-  (смещения относительно образа и `bb-probe` для `addr2line`).
-  `BB_TRACE_SEMA=1` печатает блокирующие ожидания семафоров.
+  (смещения относительно образа и `woc-probe` для `addr2line`).
+  `WOC_TRACE_SEMA=1` печатает блокирующие ожидания семафоров.
   `got_import.py <адрес GOT>` называет импорт за PLT-заглушкой.
 - Сеть в режиме «кабель отключён»: HTTP-шаблоны/соединения/запросы создаются,
   отправка возвращает сетевую ошибку; NpWebApi/Matching2/Signaling/Score —
@@ -173,8 +173,8 @@ Linux-сигналы — 128 + номер сигнала. На выполнен�
 не проверен. Для повторного запуска уже собранных файлов:
 
 ```bash
-native_probe/out/bb-probe native_probe/out/boot-libc.bin --cpu-only
-native_probe/out/bb-probe --vulkan-only
+native_probe/out/woc-probe native_probe/out/boot-libc.bin --cpu-only
+native_probe/out/woc-probe --vulkan-only
 ```
 
 Базовый образ без нативной libc сохраняется в `out/boot.bin` для сравнения
@@ -182,7 +182,7 @@ native_probe/out/bb-probe --vulkan-only
 
 Из каталога `native_probe` команда остаётся прежней: `bash run.sh --software`.
 Для воспроизведения самой ранней остановки на `_init_env` используйте
-`out/bb-probe out/boot.bin --cpu-only --strict-imports` из этого каталога.
+`out/woc-probe out/boot.bin --cpu-only --strict-imports` из этого каталога.
 
 Последняя команда использует обычные настройки Vulkan. Для программного
 драйвера задайте `VK_DRIVER_FILES` на его JSON и
@@ -233,10 +233,10 @@ NID `bzQExy189ZI`, адрес `0x5fef0`, размер 1, байт `c3` (RET).
 SHA-256 libc и доказательство записываются в `analysis.json/libc_evidence`.
 Первоначальное предположение о сложной инициализации внутри `_init_env`
 для этого дампа не подтвердилось. Возврат соответствует реальному коду функции.
-Формат `BBPROBE2` содержит флаг этой проверки; без флага runtime отключён.
-Старые образы `BBPROBE1` читаются с отключённым runtime.
+Формат `WOCPROB2` содержит флаг этой проверки; без флага runtime отключён.
+Старые образы `WOCPROB1` читаются с отключённым runtime.
 
-`link_libc.py` создаёт отдельный `out/boot-libc.bin` формата `BBPROBE3`:
+`link_libc.py` создаёт отдельный `out/boot-libc.bin` формата `WOCPROB3`:
 добавляет два сегмента оригинальной libc, её перемещения адресов и 202
 резервные привязки экспортов. Сопоставляет NID вместе с именами и версиями
 библиотеки/модуля: локальные суффиксы libc `#C#A` и eboot `#q#q` различаются.
@@ -353,8 +353,8 @@ SysV ABI. Предполагается **MinGW-w64 GCC/Clang x86-64**, не MSVC
 
 ```text
 python native_probe/prepare.py CUSA03173
-gcc -std=c11 -O2 -Wall -Wextra native_probe/probe.c native_probe/runtime.c native_probe/runtime_mutex.c native_probe/runtime_thread.c native_probe/runtime_rwlock.c native_probe/runtime_sema.c native_probe/runtime_time.c native_probe/runtime_memory.c native_probe/vulkan_smoke.c -I<SDK>/Include -L<SDK>/Lib -lvulkan-1 -o native_probe/out/bb-probe.exe
-native_probe/out/bb-probe.exe native_probe/out/boot.bin
+gcc -std=c11 -O2 -Wall -Wextra native_probe/probe.c native_probe/runtime.c native_probe/runtime_mutex.c native_probe/runtime_thread.c native_probe/runtime_rwlock.c native_probe/runtime_sema.c native_probe/runtime_time.c native_probe/runtime_memory.c native_probe/vulkan_smoke.c -I<SDK>/Include -L<SDK>/Lib -lvulkan-1 -o native_probe/out/woc-probe.exe
+native_probe/out/woc-probe.exe native_probe/out/boot.bin
 ```
 
 Пути SDK заменяются фактическими; бинарник Linux непереносим на Windows.

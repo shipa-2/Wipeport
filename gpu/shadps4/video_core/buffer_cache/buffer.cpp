@@ -6,7 +6,7 @@
 #include "common/alignment.h"
 #include "common/assert.h"
 #include "video_core/buffer_cache/buffer.h"
-#include "bbport_guest_memory.h"
+#include "wocport_guest_memory.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_platform.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
@@ -108,16 +108,16 @@ void UniqueBuffer::Create(vk::BufferCreateInfo& buffer_ci, MemoryType mem_type,
     } else {
         buffer_ci.flags |=
             vk::BufferCreateFlagBits::eSparseBinding | vk::BufferCreateFlagBits::eSparseResidency;
-        // Bound to exported guest memory chunks (BB_GUEST_IN_PLACE) as well as VRAM blocks.
+        // Bound to exported guest memory chunks (WOC_GUEST_IN_PLACE) as well as VRAM blocks.
         const vk::ExternalMemoryBufferCreateInfo external{
-            .handleTypes = BbGuestMemory::HandleType(),
+            .handleTypes = WocGuestMemory::HandleType(),
         };
         if (GuestInPlace()) {
             buffer_ci.pNext = &external;
             if (const auto [result, created] = device.createBuffer(buffer_ci);
                 result == vk::Result::eSuccess) {
                 buffer = created;
-                // bbport: VRAM blocks are bound into it too: the external memory type must not
+                // wocport: VRAM blocks are bound into it too: the external memory type must not
                 // keep device-local memory out (a driver may restrict it).
                 const auto reqs = device.getBufferMemoryRequirements(created);
                 const VkPhysicalDeviceMemoryProperties* props = nullptr;
@@ -163,11 +163,11 @@ Buffer::Buffer(const Vulkan::Instance& instance, u64 size_bytes_, vk::DeviceMemo
     : size_bytes{size_bytes_}, mem_type{MemoryType::HostCached},
       buffer{instance.GetDevice(), instance.GetAllocator()} {
     const vk::ExternalMemoryBufferCreateInfo external{
-        .handleTypes = BbGuestMemory::HandleType(),
+        .handleTypes = WocGuestMemory::HandleType(),
     };
-    // bbport BB_LAYER_MEMORY: what the GPU binds for the game's memory in place (no arena):
+    // wocport WOC_LAYER_MEMORY: what the GPU binds for the game's memory in place (no arena):
     // vertex, index and indirect data and device addresses too (the memory has them).
-    const bool layer = BbGuestMemory::LayerMemory();
+    const bool layer = WocGuestMemory::LayerMemory();
     vk::BufferUsageFlags usage =
         vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst |
         vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eUniformBuffer |
@@ -205,7 +205,7 @@ Buffer::Buffer(const Vulkan::Instance& instance, VAddr cpu_addr_, u64 size_bytes
         .usage = AllFlags,
         .sharingMode = vk::SharingMode::eExclusive,
     };
-    // bbport: arenas are also read by the readback queue (BufferCache::DownloadMemory).
+    // wocport: arenas are also read by the readback queue (BufferCache::DownloadMemory).
     const std::array<u32, 2> families = {instance.GetGraphicsQueueFamilyIndex(),
                                          instance.GetReadbackQueueFamilyIndex()};
     if (mem_type == MemoryType::Sparse && instance.GetReadbackQueue()) {

@@ -1,4 +1,4 @@
-// bbport: the MemoryManager surface used by the video core and GnmDriver.
+// wocport: the MemoryManager surface used by the video core and GnmDriver.
 // Guest memory lives at identical host addresses; the C runtime owns the VMAs.
 #pragma once
 #include "common/types.h"
@@ -19,8 +19,8 @@ public:
     u64 ClampRangeSize(VAddr virtual_addr, u64 size);
     void CopySparseMemory(VAddr source, u8* dest, u64 size);
     bool TryWriteBacking(void* address, const void* data, u64 size);
-    /// bbport: guest bytes through the backing view, past the GPU's read protection
-    /// (BB_READBACKS=2): a read fault on the GPU thread asks it for a readback it cannot do.
+    /// wocport: guest bytes through the backing view, past the GPU's read protection
+    /// (WOC_READBACKS=2): a read fault on the GPU thread asks it for a readback it cannot do.
     void ReadBacking(VAddr address, void* data, u64 size);
     /// CPU wrote guest memory outside page tracking (e.g. decoded video frames).
     void InvalidateMemory(VAddr address, u64 size);

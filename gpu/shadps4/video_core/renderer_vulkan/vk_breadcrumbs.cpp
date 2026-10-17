@@ -56,7 +56,7 @@ struct ArgsNote {
 std::array<ArgsNote, ArgSlots> args_notes{};
 
 void Init(const Instance& instance) {
-    const char* env = std::getenv("BB_BREADCRUMBS");
+    const char* env = std::getenv("WOC_BREADCRUMBS");
     if (env && env[0] == '0') {
         return;
     }

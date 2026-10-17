@@ -92,7 +92,7 @@ NO_LOADER = 7
 
 
 def inspect(upscaler, loader=None):
-    """(status, problem or None, details): what the DLLs are and whether bbport can use them.
+    """(status, problem or None, details): what the DLLs are and whether wocport can use them.
     details["loader"]: the loader to capture with, None when the upscaler DLL exports the API.
     details["kind"] names the problem for the launcher's messages: not_fsr4, fsr4_0 (official
     4.0.x: AMD enables it on RDNA4 only, so it cannot run here), other_model, no_loader,
@@ -111,7 +111,7 @@ def inspect(upscaler, loader=None):
     if SUPPORTED_MODEL not in found:
         details["kind"] = "other_model"
         return (UNSUPPORTED, f"FSR {details['version']} with model {', '.join(sorted(found))}: "
-                f"bbport replays the FSR 4.1.x model ({SUPPORTED_MODEL}) only", details)
+                f"wocport replays the FSR 4.1.x model ({SUPPORTED_MODEL}) only", details)
     if version and version[:2] < (4, 1):
         # Pragmata's 4.0.3: the same model name, but its provider is only offered on RDNA4 (FP8).
         details["kind"] = "fsr4_0"

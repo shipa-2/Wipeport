@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// bbport: the part of shadPS4's AudioOut that its Audio3d (from AstroQuest) uses. AudioOut is the
+// wocport: the part of shadPS4's AudioOut that its Audio3d (from AstroQuest) uses. AudioOut is the
 // C runtime's (src/runtime_audio.c, SDL): these call it, found by NID through runtime_resolve.
 #pragma once
 

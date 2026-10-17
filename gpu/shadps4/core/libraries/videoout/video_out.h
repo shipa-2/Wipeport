@@ -42,7 +42,7 @@ constexpr int SCE_VIDEO_OUT_BUFFER_ATTRIBUTE_OPTION_NONE = 0;
 constexpr int SCE_VIDEO_OUT_BUFFER_ATTRIBUTE_OPTION_VR = 7;
 constexpr int SCE_VIDEO_OUT_BUFFER_ATTRIBUTE_OPTION_STRICT_COLORIMETRY = 8;
 
-constexpr int ORBIS_VIDEO_OUT_DEVICE_CAPABILITY_VR_VIEW = 0x20; // bbport (AstroQuest)
+constexpr int ORBIS_VIDEO_OUT_DEVICE_CAPABILITY_VR_VIEW = 0x20; // wocport (AstroQuest)
 constexpr int ORBIS_VIDEO_OUT_DEVICE_CAPABILITY_BT2020_PQ = 0x80;
 
 enum OrbisVideoOutColorimetry : u8 {
@@ -145,7 +145,7 @@ s32 PS4_SYSV_ABI sceVideoOutAdjustColor(s32 handle, const SceVideoOutColorSettin
 // Internal system functions
 s32 sceVideoOutSubmitEopFlip(s32 handle, u32 buf_id, u32 mode, s64 flip_arg, void** unk);
 
-/// bbport (AstroQuest): one stereo frame handed to the headset by the HMD reprojection.
+/// wocport (AstroQuest): one stereo frame handed to the headset by the HMD reprojection.
 struct HmdFrame {
     std::array<AmdGpu::Image, 2> eye_textures; ///< Guest texture descriptors, left then right.
     Core::Vr::Fov fov;                         ///< Field of view the eyes were rendered with.

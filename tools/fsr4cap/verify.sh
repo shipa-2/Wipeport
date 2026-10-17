@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tools/fsr4cap/verify.sh <fsr4cap dir> [frames]: runs AMD's FSR 4.1.1 DLL (fsr4cap.exe under
-# Proton, proton.sh) and the Vulkan replay (out/gpu/fsr4-bench --fsr411, assets in BB_FSR411_DIR
+# Proton, proton.sh) and the Vulkan replay (out/gpu/fsr4-bench --fsr411, assets in WOC_FSR411_DIR
 # or fsr4_411) on the same pseudo-random inputs for several sizes and both models, and compares
 # the outputs byte by byte.
 # VARIANT: int8 (default); fp8, the DLL's FP8 matrix variant (RDNA4); fp8emu, the same with FP8
@@ -26,7 +26,7 @@ for c in '1280x720 1920x1080 2' '640x360 1920x1080 4' '1067x600 1600x900 2' '170
          '2259x1271 3840x2160 2' '1280x720 3840x2160 4' '1707x720 2560x1080 2'; do
     set -- $c
     fsr4cap_run "$R" "${FSR4CAP_VERSION:-4.1.}" "$1" "$2" "$frames" noise || true
-    BB_FSR411_VARIANT=$variant BENCH_NOISE=1 BENCH_DUMP=$tmp/replay.raw \
+    WOC_FSR411_VARIANT=$variant BENCH_NOISE=1 BENCH_DUMP=$tmp/replay.raw \
         out/gpu/fsr4-bench "$1" "$2" "$3" "$frames" --fsr411 > "$tmp/bench.log" 2>&1
     replayed=$(sed -n 's/^FSR 4.1.1: \([^ ]*\( (emulated)\)\{0,1\}\) .*/\1/p' "$tmp/bench.log" | head -1)
     if cmp -s "$R/output_$2.raw" "$tmp/replay.raw"; then

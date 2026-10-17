@@ -7,7 +7,7 @@ the order the loader resolves them:
 
   runtime   the port's runtime (src/runtime*.c): "NID#library" comparisons, and the export
             tables by the name src/import_names.inc gives that NID in that library
-  gpu       the GPU library (gpu/shadps4/core/libraries, the libraries bbgpu.cpp registers)
+  gpu       the GPU library (gpu/shadps4/core/libraries, the libraries wocgpu.cpp registers)
   shadps4   a shadPS4 tree given with --shadps4 (AstroQuest's): an implementation to port,
             'stub' where its body only logs "(STUBBED)" or returns at once
 
@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 NID = r'[A-Za-z0-9+\-]{11}'
-# The vendored shadPS4 libraries the GPU library registers (gpu/shim/bbgpu.cpp: GnmDriver,
+# The vendored shadPS4 libraries the GPU library registers (gpu/shim/wocgpu.cpp: GnmDriver,
 # VideoOut, the kernel's event queues, AvPlayer).
 GPU_LIBRARIES = ('gnmdriver', 'videoout', 'kernel/equeue.cpp', 'avplayer')
 

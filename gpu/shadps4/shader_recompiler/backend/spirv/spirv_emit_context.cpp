@@ -883,7 +883,7 @@ void EmitContext::DefineBuffers() {
 
         // Define aliases depending on the shader usage.
         auto& spv_buffer = buffers.emplace_back(binding.buffer++, desc.buffer_type);
-        // bbport BB_LAYER_MEMORY: its descriptor holds the page table record (read as U32).
+        // wocport WOC_LAYER_MEMORY: its descriptor holds the page table record (read as U32).
         spv_buffer.paged = desc.buffer_type == BufferType::Guest &&
                            IsPagedBuffer(profile.paged_buffers, buf_sharp);
         if (spv_buffer.paged) {

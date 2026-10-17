@@ -6,8 +6,8 @@
 #include <cstring>
 
 #include <vk_mem_alloc.h>
-#include "bbport_settings.h"
-#include "bbport_toggles.h"
+#include "wocport_settings.h"
+#include "wocport_toggles.h"
 #include "shader_recompiler/runtime_info.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
@@ -53,9 +53,9 @@ ObjectMotion::ObjectMotion(const Instance& instance_, Scheduler& scheduler_)
     : instance{instance_}, scheduler{scheduler_} {
     // Pipeline selection limits the extra attachment and vertex stores to likely
     // animated draws. A setting or environment override can still disable the path.
-    if (!BbSettings::Get().object_motion ||
-        BbSettings::Get().upscaler == BbSettings::UpscalerOff) {
-        std::puts("Object motion: off (enable in menu or BB_OBJECT_MOTION=1)");
+    if (!WocSettings::Get().object_motion ||
+        WocSettings::Get().upscaler == WocSettings::UpscalerOff) {
+        std::puts("Object motion: off (enable in menu or WOC_OBJECT_MOTION=1)");
         return;
     }
     const auto& features = instance.GetPhysicalDevice().getFeatures();
@@ -95,7 +95,7 @@ void ObjectMotion::OnFrameStart() {
     if (!enabled) {
         return;
     }
-    if (BbStats::enabled && (frame % 600) == 0 && history.stats.draws) {
+    if (WocStats::enabled && (frame % 600) == 0 && history.stats.draws) {
         const auto& s = history.stats;
         std::printf("Object motion: %llu draws, %llu stored, %llu with history, %llu unmatched, "
                     "%llu capacity skips, %llu invalid, %llu still (600 frames); last frame %u/%u vertices; "
@@ -140,7 +140,7 @@ void ObjectMotion::OnFrameStart() {
 }
 
 u32 ObjectMotion::PrepareDraw(const DrawInfo& draw) {
-    if (!enabled || BbToggle::Disabled(1u << 29) || params_used >= ParamsPerFrame) {
+    if (!enabled || WocToggle::Disabled(1u << 29) || params_used >= ParamsPerFrame) {
         return 0;
     }
     const auto allocation = history.Prepare(draw);
@@ -191,7 +191,7 @@ ObjectMotion::Target& ObjectMotion::GetTarget(u32 width, u32 height) {
         });
     }
     static u32 reports = 0;
-    if (BbStats::enabled && reports < 16) {
+    if (WocStats::enabled && reports < 16) {
         ++reports;
         std::printf("Object motion: motion image %ux%u%s\n", width, height,
                     slot->width ? " (replacing one)" : "");

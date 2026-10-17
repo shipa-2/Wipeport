@@ -85,8 +85,8 @@ static std::optional<std::filesystem::path> GetBundleParentDirectory() {
 #endif
 
 static auto UserPaths = [] {
-    // bbport: the port keeps GPU caches where BB_GPU_USER_DIR points.
-    const char* port_dir = std::getenv("BB_GPU_USER_DIR");
+    // wocport: the port keeps GPU caches where WOC_GPU_USER_DIR points.
+    const char* port_dir = std::getenv("WOC_GPU_USER_DIR");
     auto user_dir = port_dir ? std::filesystem::path(port_dir) : std::filesystem::current_path() / PORTABLE_DIR;
     if (!std::filesystem::exists(user_dir)) {
         // If it doesn't exist, use the standard path for the platform instead.
@@ -214,7 +214,7 @@ std::optional<fs::path> FindGameByID(const fs::path& dir, const std::string& gam
             }
             return std::nullopt;
         }
-        // bbport: packed (ZArchive) game images are not supported by the port.
+        // wocport: packed (ZArchive) game images are not supported by the port.
         return std::nullopt;
     };
 

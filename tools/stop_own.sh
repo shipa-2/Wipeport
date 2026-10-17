@@ -4,7 +4,7 @@
 cd -- "$(dirname -- "$0")/.."
 pid=$(cat out/tools_game.pid 2>/dev/null)
 rm -f out/tools_game.pid
-[[ -n $pid && $(cat /proc/$pid/comm 2>/dev/null) == bb-probe ]] || exit 0
+[[ -n $pid && $(cat /proc/$pid/comm 2>/dev/null) == woc-probe ]] || exit 0
 kill "$pid"
 for i in 1 2 3; do
     sleep 1

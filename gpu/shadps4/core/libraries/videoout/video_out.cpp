@@ -363,7 +363,7 @@ s32 sceVideoOutSubmitEopFlip(s32 handle, u32 buf_id, u32 mode, s64 flip_arg, voi
 s32 PS4_SYSV_ABI sceVideoOutGetDeviceCapabilityInfo(
     s32 handle, SceVideoOutDeviceCapabilityInfo* pDeviceCapabilityInfo) {
     pDeviceCapabilityInfo->capability = 0;
-    // bbport (AstroQuest): with a headset (SteamVR, through OpenXR) the title may draw for it.
+    // wocport (AstroQuest): with a headset (SteamVR, through OpenXR) the title may draw for it.
     if (Core::Vr::Runtime::Instance().IsHeadsetConnected()) {
         pDeviceCapabilityInfo->capability |= ORBIS_VIDEO_OUT_DEVICE_CAPABILITY_VR_VIEW;
     }

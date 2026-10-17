@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// bbport: libSceJson2 (sce::Json), which shadPS4 does not implement and WipEout imports. After
+// wocport: libSceJson2 (sce::Json), which shadPS4 does not implement and WipEout imports. After
 // Ryty's (github.com/aarvsn/Ryty, GPL-2.0, core/libs/prx/libSceJson2/Export.cpp): every class is
 // one pointer to host data (the title allocates the SDK's sizes, which are at least that, and
 // never looks inside), an object member is {String key, 8 bytes, Value value} as titles read it

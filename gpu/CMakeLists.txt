@@ -1,7 +1,7 @@
-# bbport GPU library: shadPS4 video core + shader recompiler + Gnm/VideoOut
+# wocport GPU library: shadPS4 video core + shader recompiler + Gnm/VideoOut
 # drivers, adapted to the native_probe runtime through shims in shim/.
 cmake_minimum_required(VERSION 3.24)
-project(bbgpu LANGUAGES C CXX)
+project(wocgpu LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -11,32 +11,32 @@ endif()
 # Frame pointers keep the loader's thread dumps (watchdog, SIGUSR2 sampling) walkable.
 add_compile_options(-fno-omit-frame-pointer)
 
-# bbport: link-time optimization (BB_LTO, default on) and profile-guided optimization
-# (BB_PGO: off, generate = instrumented build writing into BB_PGO_DIR, use = build with that
-# profile). Covers bbgpu and the static libraries linked into it. No -march: the same build
+# wocport: link-time optimization (WOC_LTO, default on) and profile-guided optimization
+# (WOC_PGO: off, generate = instrumented build writing into WOC_PGO_DIR, use = build with that
+# profile). Covers wocgpu and the static libraries linked into it. No -march: the same build
 # runs on the Steam Deck.
-option(BB_LTO "Link-time optimization of bbgpu" ON)
-set(BB_PGO "off" CACHE STRING "Profile-guided optimization: off, generate, use")
-set(BB_PGO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../pgo" CACHE PATH "Profile directory")
-if (BB_LTO)
+option(WOC_LTO "Link-time optimization of wocgpu" ON)
+set(WOC_PGO "off" CACHE STRING "Profile-guided optimization: off, generate, use")
+set(WOC_PGO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../pgo" CACHE PATH "Profile directory")
+if (WOC_LTO)
     include(CheckIPOSupported)
-    check_ipo_supported(RESULT bb_ipo_ok OUTPUT bb_ipo_error)
-    if (bb_ipo_ok)
+    check_ipo_supported(RESULT woc_ipo_ok OUTPUT woc_ipo_error)
+    if (woc_ipo_ok)
         set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
     else()
-        message(WARNING "LTO unavailable: ${bb_ipo_error}")
+        message(WARNING "LTO unavailable: ${woc_ipo_error}")
     endif()
 endif()
-if (BB_PGO STREQUAL "generate")
+if (WOC_PGO STREQUAL "generate")
     # Atomic counters: the GPU, recording, preparation and copy threads run the same code.
-    add_compile_options(-fprofile-generate=${BB_PGO_DIR} -fprofile-update=atomic)
-    add_link_options(-fprofile-generate=${BB_PGO_DIR})
-    add_compile_definitions(BB_PGO_GENERATE)
-elseif (BB_PGO STREQUAL "use")
+    add_compile_options(-fprofile-generate=${WOC_PGO_DIR} -fprofile-update=atomic)
+    add_link_options(-fprofile-generate=${WOC_PGO_DIR})
+    add_compile_definitions(WOC_PGO_GENERATE)
+elseif (WOC_PGO STREQUAL "use")
     # Partial training keeps unprofiled code optimized normally; counters from concurrent
     # threads can be slightly inconsistent (correction). Functions changed since the profile
-    # (or built differently for it, bbgpu_init) are compiled without it.
-    add_compile_options(-fprofile-use=${BB_PGO_DIR} -fprofile-partial-training
+    # (or built differently for it, wocgpu_init) are compiled without it.
+    add_compile_options(-fprofile-use=${WOC_PGO_DIR} -fprofile-partial-training
                         -fprofile-correction -Wno-missing-profile -Wno-coverage-mismatch)
 endif()
 
@@ -59,7 +59,7 @@ find_program(GLSLANG_COMPILER NAMES glslang glslangValidator REQUIRED)
 set(SIRIT_USE_SYSTEM_SPIRV_HEADERS OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/sirit EXCLUDE_FROM_ALL)
 
-# bbport: FSR 3.1 temporal upscaling / frame generation, native Vulkan (MIT, FireBurn/FSR-Vulkan).
+# wocport: FSR 3.1 temporal upscaling / frame generation, native Vulkan (MIT, FireBurn/FSR-Vulkan).
 set(FFX_VK_PORTABLE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(FFX_VK_PORTABLE_BUILD_PROBE OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/fsr-vulkan EXCLUDE_FROM_ALL)
@@ -134,21 +134,21 @@ file(GLOB CP_SOURCES CONFIGURE_DEPENDS cp/*.cpp)
 file(GLOB PSVR_SOURCES CONFIGURE_DEPENDS shadps4/core/libraries/hmd/*.cpp shadps4/core/libraries/vr_tracker/*.cpp
     shadps4/core/libraries/camera/*.cpp shadps4/core/libraries/json/*.cpp
     shadps4/core/libraries/audio3d/*.cpp shadps4/core/vr/*.cpp)
-add_library(bbgpu SHARED ${VIDEO_CORE} ${RECOMPILER} ${COMMON} ${SHIM_SOURCES} ${LAYER_SOURCES} ${GAME_SOURCES} ${CP_SOURCES}
+add_library(wocgpu SHARED ${VIDEO_CORE} ${RECOMPILER} ${COMMON} ${SHIM_SOURCES} ${LAYER_SOURCES} ${GAME_SOURCES} ${CP_SOURCES}
     shadps4/core/libraries/gnmdriver/gnmdriver.cpp
     shadps4/core/libraries/videoout/driver.cpp shadps4/core/libraries/videoout/video_out.cpp
     shadps4/core/libraries/kernel/equeue.cpp ${AVPLAYER}
     shadps4/core/libraries/videodec/video_utils.cpp ${PSVR_SOURCES})
-add_dependencies(bbgpu host_shaders)
-target_compile_definitions(bbgpu PRIVATE ENABLE_OPENXR_HOST)
-target_link_libraries(bbgpu PRIVATE PkgConfig::OPENXR)
+add_dependencies(wocgpu host_shaders)
+target_compile_definitions(wocgpu PRIVATE ENABLE_OPENXR_HOST)
+target_link_libraries(wocgpu PRIVATE PkgConfig::OPENXR)
 # In-game settings menu: Dear ImGui (third_party/imgui, MIT) with its Vulkan backend, and an
 # embedded Cyrillic font (third_party/fonts).
-target_sources(bbgpu PRIVATE third_party/imgui/imgui.cpp third_party/imgui/imgui_draw.cpp
+target_sources(wocgpu PRIVATE third_party/imgui/imgui.cpp third_party/imgui/imgui_draw.cpp
     third_party/imgui/imgui_tables.cpp third_party/imgui/imgui_widgets.cpp
     third_party/imgui/backends/imgui_impl_vulkan.cpp)
-target_include_directories(bbgpu PRIVATE third_party/imgui third_party/imgui/backends)
-# Dear ImGui stays private to libbbgpu.so. The library is linked into bb-probe, so its exports are
+target_include_directories(wocgpu PRIVATE third_party/imgui third_party/imgui/backends)
+# Dear ImGui stays private to libwocgpu.so. The library is linked into woc-probe, so its exports are
 # in the global symbol scope; a Vulkan layer carrying its own Dear ImGui without -Bsymbolic
 # (vkShade 0.1) had its ImGui_ImplVulkan_Init bound to this copy, which called the Vulkan loader
 # with the layer's down-chain physical device handle ("Invalid physicalDevice", abort).
@@ -156,20 +156,20 @@ set_source_files_properties(third_party/imgui/imgui.cpp third_party/imgui/imgui_
     third_party/imgui/imgui_tables.cpp third_party/imgui/imgui_widgets.cpp
     third_party/imgui/backends/imgui_impl_vulkan.cpp PROPERTIES
     COMPILE_OPTIONS "-fvisibility=hidden;-fvisibility-inlines-hidden")
-target_compile_definitions(bbgpu PRIVATE IMGUI_IMPL_VULKAN_NO_PROTOTYPES
-    BB_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/DejaVuSans.ttf")
-set_source_files_properties(shim/bbport_overlay.cpp PROPERTIES
+target_compile_definitions(wocgpu PRIVATE IMGUI_IMPL_VULKAN_NO_PROTOTYPES
+    WOC_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/DejaVuSans.ttf")
+set_source_files_properties(shim/wocport_overlay.cpp PROPERTIES
     OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/DejaVuSans.ttf")
-target_include_directories(bbgpu PRIVATE shim layer games cp shadps4 ${SHADER_INCLUDE} third_party/gcn/include third_party/half/include)
-target_compile_definitions(bbgpu PRIVATE BOOST_ASIO_STANDALONE NDEBUG)
-target_compile_options(bbgpu PRIVATE -Wno-deprecated-declarations -Wno-missing-field-initializers)
-# Loaded with bb-probe at startup (DT_NEEDED, never dlopen): thread_local access without a
+target_include_directories(wocgpu PRIVATE shim layer games cp shadps4 ${SHADER_INCLUDE} third_party/gcn/include third_party/half/include)
+target_compile_definitions(wocgpu PRIVATE BOOST_ASIO_STANDALONE NDEBUG)
+target_compile_options(wocgpu PRIVATE -Wno-deprecated-declarations -Wno-missing-field-initializers)
+# Loaded with woc-probe at startup (DT_NEEDED, never dlopen): thread_local access without a
 # TLS descriptor call (_dl_tlsdesc_return was ~2% of the draw recording thread).
-target_compile_options(bbgpu PRIVATE -ftls-model=initial-exec)
-# Runtime symbols (runtime_memory_*, runtime_process_*) resolve against bb-probe.
-target_link_options(bbgpu PRIVATE -Wl,--allow-shlib-undefined)
-target_link_libraries(bbgpu PRIVATE ffx-vulkan::portable ffx-vulkan::fsr4-v07-vulkan)
-target_link_libraries(bbgpu PUBLIC Vulkan::Headers fmt::fmt Boost::headers magic_enum::magic_enum
+target_compile_options(wocgpu PRIVATE -ftls-model=initial-exec)
+# Runtime symbols (runtime_memory_*, runtime_process_*) resolve against woc-probe.
+target_link_options(wocgpu PRIVATE -Wl,--allow-shlib-undefined)
+target_link_libraries(wocgpu PRIVATE ffx-vulkan::portable ffx-vulkan::fsr4-v07-vulkan)
+target_link_libraries(wocgpu PUBLIC Vulkan::Headers fmt::fmt Boost::headers magic_enum::magic_enum
     tsl::robin_map GPUOpen::VulkanMemoryAllocator PkgConfig::XXHASH PkgConfig::SDL3 PkgConfig::X11 PkgConfig::FFMPEG miniz::miniz Zydis::Zydis sirit)
 
 # Explicit test targets; neither launches the game nor needs a Vulkan device.
@@ -178,14 +178,14 @@ target_compile_options(motion-history-test PRIVATE -UNDEBUG -Wall -Wextra -Werro
 target_include_directories(motion-history-test PRIVATE ..)
 add_executable(motion-shader-test EXCLUDE_FROM_ALL ../tests/test_motion_shaders.cpp ../tests/test_gpu_runtime_stubs.cpp)
 target_include_directories(motion-shader-test PRIVATE shim shadps4 third_party/gcn/include)
-target_link_libraries(motion-shader-test PRIVATE bbgpu)
+target_link_libraries(motion-shader-test PRIVATE wocgpu)
 add_executable(ui-composition-test EXCLUDE_FROM_ALL ../tests/test_ui_composition.cpp)
 target_compile_options(ui-composition-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
 target_include_directories(ui-composition-test PRIVATE ..)
 add_executable(cp-decoder-test EXCLUDE_FROM_ALL ../tests/test_cp_decoder.cpp cp/cp_decoder.cpp)
 target_compile_options(cp-decoder-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
 target_include_directories(cp-decoder-test PRIVATE cp)
-add_executable(settings-test EXCLUDE_FROM_ALL ../tests/test_settings.cpp shim/bbport_settings.cpp)
+add_executable(settings-test EXCLUDE_FROM_ALL ../tests/test_settings.cpp shim/wocport_settings.cpp)
 target_compile_options(settings-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
 target_include_directories(settings-test PRIVATE .. shim)
 
@@ -196,19 +196,19 @@ target_include_directories(scene-resolution-test PRIVATE shim shadps4 third_part
 target_compile_options(scene-resolution-test PRIVATE -UNDEBUG -fPIC)
 set_source_files_properties(../tests/test_scene_resolution.cpp PROPERTIES
     COMPILE_OPTIONS "-fvisibility=hidden;-fvisibility-inlines-hidden")
-target_link_libraries(scene-resolution-test PRIVATE bbgpu)
+target_link_libraries(scene-resolution-test PRIVATE wocgpu)
 add_executable(taa-shader-test EXCLUDE_FROM_ALL ../tests/test_taa_shader.cpp ../tests/test_gpu_runtime_stubs.cpp)
 target_include_directories(taa-shader-test PRIVATE shim shadps4 ${SHADER_INCLUDE} third_party/gcn/include)
 target_compile_options(taa-shader-test PRIVATE -UNDEBUG -fPIC)
 set_source_files_properties(../tests/test_taa_shader.cpp PROPERTIES
     COMPILE_OPTIONS "-fvisibility=hidden;-fvisibility-inlines-hidden")
-target_link_libraries(taa-shader-test PRIVATE bbgpu)
+target_link_libraries(taa-shader-test PRIVATE wocgpu)
 add_dependencies(taa-shader-test host_shaders)
 
 add_executable(camera-motion-test EXCLUDE_FROM_ALL ../tests/test_camera_motion.cpp ../tests/test_gpu_runtime_stubs.cpp)
 target_include_directories(camera-motion-test PRIVATE shim shadps4 ${SHADER_INCLUDE} third_party/gcn/include)
 target_compile_options(camera-motion-test PRIVATE -UNDEBUG -fPIC)
-target_link_libraries(camera-motion-test PRIVATE bbgpu)
+target_link_libraries(camera-motion-test PRIVATE wocgpu)
 add_dependencies(camera-motion-test host_shaders)
 
 add_executable(translation-memory-test EXCLUDE_FROM_ALL ../tests/test_translation_memory.cpp
@@ -217,11 +217,11 @@ target_include_directories(translation-memory-test PRIVATE shim shadps4 third_pa
 target_compile_options(translation-memory-test PRIVATE -UNDEBUG -fPIC)
 set_source_files_properties(../tests/test_translation_memory.cpp PROPERTIES
     COMPILE_OPTIONS "-fvisibility=hidden;-fvisibility-inlines-hidden")
-target_link_libraries(translation-memory-test PRIVATE bbgpu)
+target_link_libraries(translation-memory-test PRIVATE wocgpu)
 
-# bbport: FSR 4 benchmark outside the game (tools/fsr4_bench.cpp): ninja -C out/gpu fsr4-bench.
+# wocport: FSR 4 benchmark outside the game (tools/fsr4_bench.cpp): ninja -C out/gpu fsr4-bench.
 add_executable(upscaler-support-test EXCLUDE_FROM_ALL ../tests/test_upscaler_support.cpp
-    shim/bbport_settings.cpp)
+    shim/wocport_settings.cpp)
 target_include_directories(upscaler-support-test PRIVATE shim)
 target_compile_options(upscaler-support-test PRIVATE -UNDEBUG)
 

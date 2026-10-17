@@ -19,7 +19,7 @@ struct Target {
     VAddr address{};
     vk::Format format{};
     u32 width{}, height{};
-    u32 samples{1}; ///< bbport: MSAA samples of the image (guest's)
+    u32 samples{1}; ///< wocport: MSAA samples of the image (guest's)
     bool operator==(const Target&) const = default;
 };
 
@@ -53,7 +53,7 @@ void AddBuffers(Entry& entry) {
 bool pass_open = false;
 std::mutex display_mutex;
 std::vector<VAddr> display_buffers;
-// bbport: read on every draw; the game registers a handful of display buffers once.
+// wocport: read on every draw; the game registers a handful of display buffers once.
 std::array<std::atomic<VAddr>, 16> display_list{};
 std::atomic<u32> display_count{0};
 
@@ -86,7 +86,7 @@ void AddShader(Entry& entry, u64 hash) {
 }
 
 void Write(VAddr presented) {
-    const char* dir = std::getenv("BB_CAPTURE_DIR");
+    const char* dir = std::getenv("WOC_CAPTURE_DIR");
     const std::string path =
         std::format("{}/frame_{}.txt", dir ? dir : ".", static_cast<long long>(std::time(nullptr)));
     FILE* f = std::fopen(path.c_str(), "w");
@@ -132,7 +132,7 @@ void Write(VAddr presented) {
 void FrameCapture::OnFlip(VAddr presented_address) {
     last_presented.store(presented_address, std::memory_order_relaxed);
     flips.fetch_add(1, std::memory_order_release);
-    static const char* trigger = std::getenv("BB_CAPTURE_TRIGGER");
+    static const char* trigger = std::getenv("WOC_CAPTURE_TRIGGER");
     if (trigger && state.load(std::memory_order_relaxed) == Idle &&
         std::filesystem::exists(trigger)) {
         std::error_code ec;
@@ -270,11 +270,11 @@ bool FrameCapture::WantsContents(VAddr address, u64 ps_hash) {
     if (state.load(std::memory_order_relaxed) != Recording) {
         return false;
     }
-    // BB_CAPTURE_PS: pixel shader hashes (hex) whose draws' target is wanted (addresses move
+    // WOC_CAPTURE_PS: pixel shader hashes (hex) whose draws' target is wanted (addresses move
     // from run to run, hashes do not).
     static const std::vector<u64> wanted_ps = [] {
         std::vector<u64> list;
-        if (const char* env = std::getenv("BB_CAPTURE_PS")) {
+        if (const char* env = std::getenv("WOC_CAPTURE_PS")) {
             for (const char* p = env; *p;) {
                 char* end = nullptr;
                 const unsigned long long value = std::strtoull(p, &end, 16);
@@ -292,7 +292,7 @@ bool FrameCapture::WantsContents(VAddr address, u64 ps_hash) {
     }
     static const std::vector<VAddr> wanted = [] {
         std::vector<VAddr> list;
-        if (const char* env = std::getenv("BB_CAPTURE_IMAGES")) {
+        if (const char* env = std::getenv("WOC_CAPTURE_IMAGES")) {
             for (const char* p = env; *p;) {
                 char* end = nullptr;
                 const unsigned long long value = std::strtoull(p, &end, 0);
@@ -310,7 +310,7 @@ bool FrameCapture::WantsContents(VAddr address, u64 ps_hash) {
 
 std::string FrameCapture::ContentsPath(VAddr address, u32 width, u32 height, u32 bits) {
     static std::atomic<u32> index{0};
-    const char* dir = std::getenv("BB_CAPTURE_DIR");
+    const char* dir = std::getenv("WOC_CAPTURE_DIR");
     char path[512];
     std::snprintf(path, sizeof(path), "%s/d%04u_%llx_%ux%u_%ubpp.raw", dir && dir[0] ? dir : ".",
                   index.fetch_add(1), static_cast<unsigned long long>(address), width, height, bits);

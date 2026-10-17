@@ -8,7 +8,7 @@
 
 #include "cp_decoder.h"
 
-using namespace BbCp;
+using namespace WocCp;
 
 namespace {
 

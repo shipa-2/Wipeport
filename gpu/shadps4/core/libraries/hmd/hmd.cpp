@@ -39,7 +39,7 @@ static void FillDeviceInformation(OrbisHmdDeviceInformation* info) {
     // A headset always belongs to a logged in user, also before anything opened it. Titles look
     // that user up to decide whether the headset is usable.
     if (g_user_id == -1) {
-        info->user_id = 1; // bbport: the runtime's one user (runtime_services.c USER_ID)
+        info->user_id = 1; // wocport: the runtime's one user (runtime_services.c USER_ID)
     }
     info->status = OrbisHmdDeviceStatus::ORBIS_HMD_DEVICE_STATUS_READY;
     info->device_info.panel_resolution = {PanelWidth, PanelHeight};
@@ -894,7 +894,7 @@ s32 PS4_SYSV_ABI Func_FF2E0E53015FE231() {
 }
 
 void RegisterLib(Core::Loader::SymbolsResolver* sym) {
-    // bbport: the SDK version from the executable's procparam (bbgpu.cpp FillElfInfo).
+    // wocport: the SDK version from the executable's procparam (wocgpu.cpp FillElfInfo).
     g_firmware_version = static_cast<s32>(Common::ElfInfo::Instance().CompiledSdkVer());
     LIB_FUNCTION("6biw1XHTSqQ", "libSceHmd", 1, "libSceHmd", sceHmdClose);
     LIB_FUNCTION("BWY-qKM5hxE", "libSceHmd", 1, "libSceHmd", sceHmdGet2DEyeOffset);

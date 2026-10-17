@@ -1,5 +1,5 @@
-// bbport: fault-handler registry. The C loader's SIGSEGV handler calls
-// bbgpu_handle_fault() first; registered handlers run in priority order.
+// wocport: fault-handler registry. The C loader's SIGSEGV handler calls
+// wocgpu_handle_fault() first; registered handlers run in priority order.
 #pragma once
 #include <compare>
 #include <cstdint>
@@ -37,7 +37,7 @@ private:
     struct HandlerEntry {
         T handler;
         u32 priority;
-        // bbport: equal priorities are kept (ordered by handler), not dropped by the set.
+        // wocport: equal priorities are kept (ordered by handler), not dropped by the set.
         std::strong_ordering operator<=>(const HandlerEntry& right) const {
             if (const auto order = priority <=> right.priority; order != 0) return order;
             return reinterpret_cast<std::uintptr_t>(handler) <=> reinterpret_cast<std::uintptr_t>(right.handler);

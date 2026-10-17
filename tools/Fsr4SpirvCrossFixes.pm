@@ -13,7 +13,7 @@ sub signed_unpack {
     my $n = ($src =~ s/\bunpack8\(/bbUnpackS8(/g);
     die "expected signed int8 unpacks\n" unless $n;
     my $helper = <<'GLSL';
-// bbport: signed int8 unpack (spirv-cross emits the unsigned unpack8(uint)).
+// wocport: signed int8 unpack (spirv-cross emits the unsigned unpack8(uint)).
 i8vec4 bbUnpackS8(uint v)
 {
     return unpack8(int(v));

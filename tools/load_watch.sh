@@ -20,7 +20,7 @@ snapshot() { # tid name ticks
     done
 }
 while :; do
-    pid=$(pgrep -x bb-probe | head -1)
+    pid=$(pgrep -x woc-probe | head -1)
     if [[ -z $pid ]]; then
         echo "$(date +%H:%M:%S) game not running" >> "$out"
         sleep 5

@@ -71,7 +71,7 @@ Id SharedAtomicU64CmpSwap(EmitContext& ctx, Id offset, Id value, Id cmp_value) {
                                        cmp_value);
 }
 
-// bbport BB_LAYER_MEMORY: the pointer of a buffer atomic. Paged buffers go through the page table
+// wocport WOC_LAYER_MEMORY: the pointer of a buffer atomic. Paged buffers go through the page table
 // (out of range or unmapped: a trash area, and the result is zero, as with the guard invalid).
 struct AtomicTarget {
     Id pointer;

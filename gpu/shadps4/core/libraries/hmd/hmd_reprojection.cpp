@@ -221,7 +221,7 @@ s32 PS4_SYSV_ABI sceHmdReprojectionStart(const OrbisHmdReprojectionParam* param,
         return ORBIS_HMD_ERROR_PARAMETER_NULL;
     }
 
-    // bbport (AstroQuest): the frame goes to the headset of this machine through the presenter
+    // wocport (AstroQuest): the frame goes to the headset of this machine through the presenter
     // (VideoOut::SubmitHmdFrame, Presenter::PresentHmdFrame, OpenXrHost).
     Libraries::VideoOut::HmdFrame frame{};
     std::memcpy(&frame.eye_textures[0], param->texture[0], sizeof(AmdGpu::Image));

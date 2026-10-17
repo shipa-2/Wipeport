@@ -73,7 +73,7 @@ public:
 
     void Draw(bool is_indexed, u32 index_offset = 0, const PreparedDraw* prepared = nullptr);
 
-    /// bbport: draw preparation workers (vk_draw_prep.h), fed and consumed by Liverpool.
+    /// wocport: draw preparation workers (vk_draw_prep.h), fed and consumed by Liverpool.
     DrawPreparation& GetDrawPreparation() {
         return *draw_prep;
     }
@@ -101,35 +101,35 @@ public:
 
     void FillBuffer(VAddr address, u32 num_bytes, u32 value, bool is_gds);
     void CopyBuffer(VAddr dst, VAddr src, u32 num_bytes, bool dst_gds, bool src_gds);
-    /// bbport: whether FillBuffer/CopyBuffer into guest memory at `dst` may write it on the CPU
+    /// wocport: whether FillBuffer/CopyBuffer into guest memory at `dst` may write it on the CPU
     /// now (otherwise the GPU writes it, in stream order).
     [[nodiscard]] bool DmaMayWriteOnCpu(VAddr dst, u32 num_bytes);
     u32 ReadDataFromGds(u32 gsd_offset);
     bool InvalidateMemory(VAddr addr, u64 size, bool assume_locks = false);
-    /// bbport: data written into GPU memory by a path we hear of (file reads, the game's resource
+    /// wocport: data written into GPU memory by a path we hear of (file reads, the game's resource
     /// loaders, DMA on the CPU): invalidated, and an asset for the buffer cache.
     void NoteAssetWrite(VAddr addr, u64 size);
-    /// bbport: the CPU has written [addr, addr + size): invalidated, its bytes kept over GPU data that
+    /// wocport: the CPU has written [addr, addr + size): invalidated, its bytes kept over GPU data that
     /// is read back first.
     void InvalidateAfterWrite(VAddr addr, u64 size);
-    /// bbport (any thread): the command processor wrote these bytes outside the command stream
+    /// wocport (any thread): the command processor wrote these bytes outside the command stream
     /// (labels, timestamps, occlusion results): VRAM copies of them get them too.
     void NoteLateCommandWrite(VAddr addr, const void* data, u64 size) {
         buffer_cache.NoteLateCommandWrite(addr, data, size);
     }
-    /// bbport: the command processor wrote `size` bytes of `data` at addr with the CPU in decode order
+    /// wocport: the command processor wrote `size` bytes of `data` at addr with the CPU in decode order
     /// (WriteData, a constant RAM dump; the decoder reads them there). Where the GPU's own data there
     /// is in VRAM the bytes go into it in stream order, else the caches are invalidated (no write
     /// tracking). `recording_thread`: the draw recording thread, which owns the caches (no drain).
     void NoteCommandWrite(VAddr addr, const void* data, u64 size, bool recording_thread);
-    /// bbport (stage A, BB_CONSTRAM_PIPE, default on): before the command processor writes guest
+    /// wocport (stage A, WOC_CONSTRAM_PIPE, default on): before the command processor writes guest
     /// memory with the CPU (a constant RAM dump), waits until the recording thread has run the
     /// queued packets that read those bytes (their buffer bindings, DMA), not all of them.
     void WaitForPendingReads(VAddr address, u64 size);
     /// NoteCommandWrite for a write made on stage A: handed to the recording thread in order (a copy
     /// of the bytes) instead of draining it first.
     void NoteCommandWriteInOrder(VAddr addr, const void* data, u64 size);
-    /// bbport: a guest thread wrote [addr, addr + size) with a libc import (memcpy, memset, memmove)
+    /// wocport: a guest thread wrote [addr, addr + size) with a libc import (memcpy, memset, memmove)
     /// over pages the caches watch (no write tracking): what a write fault did.
     void OnCpuWrite(VAddr addr, u64 size);
     /// GPU thread, before a write the guest can observe (see Scheduler::WaitHostCopies).
@@ -138,11 +138,11 @@ public:
         scheduler.WaitHostCopies();
     }
     /// Before a write into [address, address + size): waits only when a host copy may still read
-    /// it (Scheduler::WaitHostCopiesFor). BB_HOST_COPY_WAITS=all: always (the old behaviour).
+    /// it (Scheduler::WaitHostCopiesFor). WOC_HOST_COPY_WAITS=all: always (the old behaviour).
     void WaitHostCopiesFor(VAddr address, u64 size) {
         DrainDrawPipe();
         static const bool all = [] {
-            const char* env = std::getenv("BB_HOST_COPY_WAITS");
+            const char* env = std::getenv("WOC_HOST_COPY_WAITS");
             return env && std::string_view{env} == "all";
         }();
         if (all) {
@@ -156,7 +156,7 @@ public:
         scheduler.NoteHostCopySource(address, size);
     }
 
-    /// bbport: GPU command thread: waits until the draw recording thread has recorded every
+    /// wocport: GPU command thread: waits until the draw recording thread has recorded every
     /// draw handed to it (vk_draw_pipe.h); no-op on other threads.
     /// `line`/`function`: the caller, for the statistics of where stage A waits.
     void DrainDrawPipe(u32 reason = DrawPipe::ReasonRasterizer, u32 line = __builtin_LINE(),
@@ -168,7 +168,7 @@ public:
     /// `reads_guest_memory`: the task may read guest memory (a CPU write on stage A over memory
     /// waits for it, WaitForPendingReads); false for fences, flips and signals.
     bool RunInOrder(OrderedTask task, const void* data, u32 size,
-                    u64 toggle = BbToggle::PipelinedTasks, bool reads_guest_memory = true);
+                    u64 toggle = WocToggle::PipelinedTasks, bool reads_guest_memory = true);
     /// Stage A: the draw pipe position after the last handed-over packet, and whether the
     /// recording thread has run everything before a position.
     [[nodiscard]] u64 DrawPipeHead() const {
@@ -197,7 +197,7 @@ public:
     void SignalAfterHostCopies(std::function<void()> signal) {
         scheduler.SignalAfterHostCopies(std::move(signal));
     }
-    /// bbport BB_HONEST_LABELS=1: runs `signal` once the GPU has finished every command recorded
+    /// wocport WOC_HONEST_LABELS=1: runs `signal` once the GPU has finished every command recorded
     /// before this call (the submission of the current tick), in call order, on a thread that
     /// waits on the work semaphore: fences the guest sees when the work is done, not when it is
     /// recorded. `label` and `value`: the fence it writes (PendingSignalValue).
@@ -205,22 +205,22 @@ public:
     /// Whether signals wait for work not submitted yet (the GPU command thread submits it when
     /// it runs out of work, or the guest could wait for them forever).
     bool HasUnsubmittedSignals();
-    /// bbport BB_GUEST_IN_PLACE (draw recording thread): `data` written into the game's memory by the
+    /// wocport WOC_GUEST_IN_PLACE (draw recording thread): `data` written into the game's memory by the
     /// GPU in stream order, like the command processor's writes; false when the range is not
     /// bound in place (the caller writes it with the CPU).
     bool WriteGuestMemory(VAddr address, const void* data, u32 size);
-    /// bbport BB_GUEST_IN_PLACE (in stream order: the recording thread): a WRITE_DATA performed by
+    /// wocport WOC_GUEST_IN_PLACE (in stream order: the recording thread): a WRITE_DATA performed by
     /// the GPU, as the command processor does, instead of a CPU store now (ahead of the GPU work
     /// recorded before it). Values of up to 8 bytes are registered for WAIT_REG_MEM until the GPU
-    /// has written them. False: not in place (or BB_GPU_COMMAND_WRITES=0), the caller stores it.
+    /// has written them. False: not in place (or WOC_GPU_COMMAND_WRITES=0), the caller stores it.
     bool WriteDataOnGpu(VAddr address, const void* data, u32 size);
-    /// bbport BB_GUEST_IN_PLACE (in stream order: the recording thread): an end-of-pipe label
+    /// wocport WOC_GUEST_IN_PLACE (in stream order: the recording thread): an end-of-pipe label
     /// (EVENT_WRITE_EOP/EOS) written by the GPU itself once the work recorded before it is done,
     /// as the command processor does: a buffer marker into the game's memory, where the CPU sees
     /// it. Registered for WAIT_REG_MEM like the CPU-written ones. False (the caller signals it
-    /// from the CPU): not in GPU-visible guest memory, no VK_AMD_buffer_marker, BB_GPU_LABELS=0.
+    /// from the CPU): not in GPU-visible guest memory, no VK_AMD_buffer_marker, WOC_GPU_LABELS=0.
     bool WriteLabelOnGpu(VAddr address, u64 value, u32 num_bytes);
-    /// bbport: a ZPASS_DONE event (the game's occlusion query) at `address` for `pairs` depth
+    /// wocport: a ZPASS_DONE event (the game's occlusion query) at `address` for `pairs` depth
     /// blocks, in stream order (vk_occlusion.h). False when it is left to the caller (the old
     /// memory model).
     bool OcclusionEvent(VAddr address, u32 pairs);
@@ -228,21 +228,21 @@ public:
     static bool OcclusionTranslated();
     /// ZPASS_DONE events translated so far.
     u64 OcclusionEvents() const;
-    /// bbport BB_GUEST_IN_PLACE (in stream order): the GPU clock (PS4: 100 MHz) written as 64 bits
+    /// wocport WOC_GUEST_IN_PLACE (in stream order): the GPU clock (PS4: 100 MHz) written as 64 bits
     /// at `address` by the GPU, at the end of the pipe or when it gets there (vk_timestamps.h).
-    /// False (the caller writes it with the CPU): BB_GPU_TIMESTAMPS=0, no timestamps, the old model.
+    /// False (the caller writes it with the CPU): WOC_GPU_TIMESTAMPS=0, no timestamps, the old model.
     bool WriteTimestampOnGpu(VAddr address, bool end_of_pipe);
     /// A fault on a page of occlusion counters watched for the game's first access
-    /// (BB_OCCLUSION_READ_TRACE); false: not such a page.
+    /// (WOC_OCCLUSION_READ_TRACE); false: not such a page.
     bool OnOcclusionPageAccess(VAddr addr, u64 rip, bool write, bool gpu_thread);
     /// A CPU access hit a page whose newest data the GPU wrote into a VRAM copy only
-    /// (BB_LAYER_READ_TRAPS): copied back first. False: not such a page.
+    /// (WOC_LAYER_READ_TRAPS): copied back first. False: not such a page.
     bool OnVramDataAccess(VAddr addr, bool assume_locks);
     /// End of a guest submission: submits the work recorded so far when signals wait for it and
-    /// the last submission is BB_HONEST_FLUSH_US (1000) old: the GPU starts on it as the hardware
+    /// the last submission is WOC_HONEST_FLUSH_US (1000) old: the GPU starts on it as the hardware
     /// would, instead of at the end of the frame, and the guest's mid-frame waits end sooner.
     void SubmitForSignals();
-    /// bbport BB_PIPE_SIGNALS (default on with honest labels; 0: off): on the GPU command thread with
+    /// wocport WOC_PIPE_SIGNALS (default on with honest labels; 0: off): on the GPU command thread with
     /// the draw pipe, fences, the GPU idle and frame signals and the submissions for them are
     /// handed to the draw recording thread as ordered tasks instead of that thread being drained
     /// first (the GPU command thread waited for it ~15 times a frame and the GPU ran dry meanwhile).
@@ -250,7 +250,7 @@ public:
     /// Stage A: the fences the recording thread ran up to `position` are in the signal queue (or
     /// written): a fence it ran but holds still (PublishSignals) is not visible there yet.
     bool SignalsPublished(u64 position) const;
-    /// Stage A (BB_PIPE_SIGNALS): the recording thread hands over its signals and submits the work
+    /// Stage A (WOC_PIPE_SIGNALS): the recording thread hands over its signals and submits the work
     /// they wait for, in order, when it gets there (one request in flight at a time).
     void RequestSignalFlush();
     u64 CurrentTick() const {
@@ -299,7 +299,7 @@ private:
     void PrepareRenderState(const GraphicsPipeline* pipeline);
     RenderState BeginRendering(const GraphicsPipeline* pipeline);
     RenderState BeginRenderingFull(const GraphicsPipeline* pipeline);
-    /// bbport: a draw continuing the open render pass with the same inputs gets the same render
+    /// wocport: a draw continuing the open render pass with the same inputs gets the same render
     /// state (RenderStateMemo); nothing can have broken the pass in between (barriers, copies and
     /// dispatches end it).
     struct BeginSignature {
@@ -329,7 +329,7 @@ private:
     } begin_memo;
     u64 begin_memo_hits = 0, begin_memo_misses = 0;
     void Resolve();
-    void CaptureTargetContents(VideoCore::Image& image, u64 ps_hash); ///< bbport: BB_CAPTURE_IMAGES/PS
+    void CaptureTargetContents(VideoCore::Image& image, u64 ps_hash); ///< wocport: WOC_CAPTURE_IMAGES/PS
     void DepthStencilCopy(bool is_depth, bool is_stencil);
     void EliminateFastClear();
 
@@ -389,7 +389,7 @@ private:
     void ForceAnisotropy(AmdGpu::Sampler& sharp, bool is_depth) const;
     void BindSamplers(const Shader::Info& stage, const PreparedStage* prepared,
                       Shader::Backend::Bindings& binding, u32& write_index);
-    /// bbport: a stage's resolved textures remembered by its prepared T# hashes
+    /// wocport: a stage's resolved textures remembered by its prepared T# hashes
     /// (TextureSetMemo): a hit only redoes the per-draw effects (binding flags, transitions).
     struct TextureSetEntry {
         VideoCore::ImageId id{}; ///< after the depth redirect; null descriptor when invalid
@@ -425,14 +425,14 @@ private:
     static void RunTextureTask(void* rasterizer);
     static void JoinBindHelper(void* rasterizer);
 
-    /// Display pass: counts the frame (BbStats::gpu_frames) and, with BB_BUFFER_STATS, the lag.
+    /// Display pass: counts the frame (WocStats::gpu_frames) and, with WOC_BUFFER_STATS, the lag.
     void NoteFrameStart();
-    /// BB_GPU_PROFILE: a timestamp where a render pass starts (vk_gpu_profiler.h).
+    /// WOC_GPU_PROFILE: a timestamp where a render pass starts (vk_gpu_profiler.h).
     void MarkPass(const GraphicsPipeline* pipeline, const RenderState& state);
     void BindVertexBuffers(const GraphicsPipeline* pipeline,
                            const PreparedDraw* prepared = nullptr);
     void BindIndexBuffer(u32 index_offset = 0);
-    /// bbport: BindVertexBuffers/BindIndexBuffer in two halves: obtaining the buffers
+    /// wocport: BindVertexBuffers/BindIndexBuffer in two halves: obtaining the buffers
     /// (vertex_binds, index_bind) and recording the binds.
     void ResolveVertexBuffers(const GraphicsPipeline* pipeline, const PreparedDraw* prepared);
     void EmitVertexBuffers();
@@ -460,14 +460,14 @@ private:
     Common::SharedFirstMutex mapped_ranges_mutex;
     PipelineCache pipeline_cache;
     std::unique_ptr<DrawPreparation> draw_prep;
-    std::unique_ptr<CameraMotion> camera_motion; // bbport: motion vectors (docs/upscaler.md)
+    std::unique_ptr<CameraMotion> camera_motion; // wocport: motion vectors (docs/upscaler.md)
     std::unique_ptr<SceneTargets> scene_targets;
     bool scene_started = false;
     std::unique_ptr<ObjectMotion> object_motion;
     bool motion_draw = false;
     u64 motion_geometry{};    ///< vertex-stream identity of the current direct draw
     bool gbuffer_draw = false;
-    std::unique_ptr<TemporalUpscaler> upscaler; // bbport: FSR (docs/upscaler.md)
+    std::unique_ptr<TemporalUpscaler> upscaler; // wocport: FSR (docs/upscaler.md)
     std::array<float, 2> draw_jitter{};         ///< viewport offset of the current draw, pixels
     std::array<float, 2> target_scale{1.0f, 1.0f}; ///< pass drawn into the upscaler's output-size images
     const bool host_markers_enabled;
@@ -491,11 +491,11 @@ private:
     Pipeline::DescriptorWrites set_writes;
     Shader::PushData push_data;
 
-    // bbport: bindings point at their description instead of copying it (a hot spot): into
+    // wocport: bindings point at their description instead of copying it (a hot spot): into
     // image_desc_cache for memoized lookups (pinned for the current BindTextures call), else
     // into image_desc_storage.
     using ImageBindingInfo = std::pair<VideoCore::ImageId, const VideoCore::TextureCache::ImageDesc*>;
-    // bbport: texture descriptions depend only on the T# and three resource flags; building
+    // wocport: texture descriptions depend only on the T# and three resource flags; building
     // them (mip layout sizes) for every binding of every draw was a hot spot.
     struct ImageDescCacheEntry {
         std::array<u64, 4> sharp{};
@@ -518,7 +518,7 @@ private:
     boost::container::static_vector<VideoCore::TextureCache::ImageDesc, Shader::NUM_IMAGES * 2>
         image_desc_storage;
     u64 bind_epoch = 0;
-    // bbport: render/depth target lookups memoized by their raw register bytes while image
+    // wocport: render/depth target lookups memoized by their raw register bytes while image
     // registrations are unchanged (the descriptions depend only on those registers).
     struct TargetMemo {
         std::array<u8, 256> key{};
@@ -528,7 +528,7 @@ private:
         VideoCore::TextureCache::ImageDesc desc;
     };
     std::array<TargetMemo, 64> target_memo{};
-    // bbport: consecutive draws mostly keep their targets; the slot's description (cb_descs,
+    // wocport: consecutive draws mostly keep their targets; the slot's description (cb_descs,
     // db_desc) is then still the right one and is neither looked up nor copied.
     struct LastTarget {
         std::array<u8, 256> key{};
@@ -578,7 +578,7 @@ private:
         bool pending;
         bool resolved;
     } draw_inputs{};
-    // bbport: textures of a draw bound on the helper thread while this thread binds buffers.
+    // wocport: textures of a draw bound on the helper thread while this thread binds buffers.
     static bool BindHelperWanted();
     BindHelper bind_helper{BindHelperWanted()};
     struct TextureTask {
@@ -593,14 +593,14 @@ private:
         u32 completed = 0; ///< stages the helper bound; the rest are bound after the join
         bool barrier = false;
     } texture_task;
-    /// Draws whose textures the helper bound completely, partly or not at all (BB_FRAME_STATS).
+    /// Draws whose textures the helper bound completely, partly or not at all (WOC_FRAME_STATS).
     u64 helper_full = 0, helper_partial = 0, helper_serial = 0;
     /// The memoized cache entry of each image binding (FindImage memo taken), else null.
     boost::container::static_vector<ImageDescCacheEntry*, Shader::NUM_IMAGES> image_binding_entries;
     bool fault_process_pending{};
     bool attachment_feedback_loop{};
     bool needs_barrier{};
-    // bbport: two-stage draw pipeline (stage B state; the thread is the last member so it
+    // wocport: two-stage draw pipeline (stage B state; the thread is the last member so it
     // stops first).
     static inline thread_local const AmdGpu::Regs* stage_regs = nullptr;
     static inline thread_local const AmdGpu::ComputeProgram* stage_cs = nullptr;
@@ -653,10 +653,10 @@ private:
     u64 untracked_reads_packet = 0; ///< newest packet reading guest memory it does not list
     u64 constram_waits_skipped = 0; ///< statistics: CPU writes that did not have to wait
     u64 proxy_samples = 0; ///< texture bindings that read a scene proxy (statistics)
-    float sampler_lod_bias = 0.0f; ///< bbport: extra bias of this draw's samplers
-    bool pipeline_is_compute = false; ///< bbport: the bound pipeline of BindResources
-    bool scene_debug_frame = false; ///< BB_SCENE_DEBUG: this frame's passes are printed
-    u32 preupload_frame = ~0u; ///< bbport: frame of the last background pre-upload
+    float sampler_lod_bias = 0.0f; ///< wocport: extra bias of this draw's samplers
+    bool pipeline_is_compute = false; ///< wocport: the bound pipeline of BindResources
+    bool scene_debug_frame = false; ///< WOC_SCENE_DEBUG: this frame's passes are printed
+    u32 preupload_frame = ~0u; ///< wocport: frame of the last background pre-upload
     bool PendingWriteOverlaps(VAddr address, u64 size);
     /// Stage B: the ring bindings of the stages of the packet being recorded.
     struct RingStage {
@@ -666,7 +666,7 @@ private:
     };
     std::array<RingStage, Shader::MaxStageTypes> ring_stages{};
     u32 num_ring_stages = 0;
-    /// bbport: the vertex stream V#s of the packet being recorded (stage B; empty elsewhere).
+    /// wocport: the vertex stream V#s of the packet being recorded (stage B; empty elsewhere).
     std::span<const AmdGpu::Buffer> packet_vsharps;
     const RingBinding* FindRingBinding(const Shader::Info& stage, u32 index) const {
         for (u32 i = 0; i < num_ring_stages; ++i) {
@@ -689,7 +689,7 @@ private:
     std::deque<std::pair<u64, std::shared_ptr<const void>>> pipe_keepalive;
     std::unique_ptr<DrawPipe> draw_pipe;
 
-    /// BB_HONEST_LABELS (SignalAfterGpu). Last: its thread stops before the scheduler goes.
+    /// WOC_HONEST_LABELS (SignalAfterGpu). Last: its thread stops before the scheduler goes.
     struct GpuSignal {
         u64 tick;
         std::function<void()> signal;
@@ -697,12 +697,12 @@ private:
         u64 value;
     };
     void GpuSignalLoop(std::stop_token token);
-    /// bbport: GpuSignalLoop has waited 10 s for `tick`: prints whether the GPU or the port is stuck.
+    /// wocport: GpuSignalLoop has waited 10 s for `tick`: prints whether the GPU or the port is stuck.
     void GpuWatchdog(u64 tick);
     std::mutex gpu_signals_mutex;
     std::condition_variable_any gpu_signals_cv;
     std::deque<GpuSignal> gpu_signals;
-    /// bbport: signals registered on the draw recording thread since it last handed them over
+    /// wocport: signals registered on the draw recording thread since it last handed them over
     /// (PublishSignals: at the end of each guest submission and at every flush), one lock per
     /// batch instead of per fence (~450 fences a frame).
     std::vector<GpuSignal> local_signals;

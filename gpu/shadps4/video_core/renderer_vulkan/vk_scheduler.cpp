@@ -14,24 +14,24 @@
 #include <unistd.h>
 #include <functional>
 
-#include "bbport_copy.h"
+#include "wocport_copy.h"
 #include "video_core/renderer_vulkan/vk_gpu_profiler.h"
-#include "bbport_toggles.h"
-#include "bbport_wait_trace.h"
+#include "wocport_toggles.h"
+#include "wocport_wait_trace.h"
 #include "common/assert.h"
 #include "common/debug.h"
 #include "common/thread.h"
 #include "imgui/renderer/texture_manager.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
-#include "bbport_threads.h"
+#include "wocport_threads.h"
 
 namespace Vulkan {
 
 std::mutex Scheduler::submit_mutex;
 
 namespace {
-// bbport: ProducerScope state of this thread: the producer function it is in (any scheduler).
+// wocport: ProducerScope state of this thread: the producer function it is in (any scheduler).
 thread_local const char* producer_scope_where = nullptr;
 std::atomic<u32> producer_reports{0};
 
@@ -94,14 +94,14 @@ void Scheduler::ProducerScope::Leave() noexcept {
 
 namespace {
 
-/// bbport: Vulkan recording threads: BB_VK_RECORD_THREADS, else 2 from 8 hardware threads and 3
+/// wocport: Vulkan recording threads: WOC_VK_RECORD_THREADS, else 2 from 8 hardware threads and 3
 /// from 12. One thread records ~75% of a core at 200 FPS (4 cores / 8 threads); the segments
 /// let the stream use more than one.
 u32 RecordingThreadCount() {
-    if (const char* env = std::getenv("BB_VK_RECORD_THREADS")) {
+    if (const char* env = std::getenv("WOC_VK_RECORD_THREADS")) {
         return std::clamp(std::atoi(env), 1, 8);
     }
-    const unsigned available = BbThreads::Available();
+    const unsigned available = WocThreads::Available();
     return available >= 12 ? 3 : available >= 8 ? 2 : 1;
 }
 
@@ -117,14 +117,14 @@ Scheduler::Scheduler(const Instance& instance, bool threaded_recording)
     : instance{instance}, work_semaphore{instance}, command_pool{instance, &work_semaphore} {
     crumb_stream = Breadcrumbs::NewStream(
         instance, threaded_recording ? "draws: game and presenter" : "presentation");
-    // bbport: BB_VK_RECORD_THREAD=0 records on the calling thread.
-    const char* env = std::getenv("BB_VK_RECORD_THREAD");
+    // wocport: WOC_VK_RECORD_THREAD=0 records on the calling thread.
+    const char* env = std::getenv("WOC_VK_RECORD_THREAD");
     if (threaded_recording && !(env && env[0] == '0')) {
         record_chunk = AcquireChunk();
         ordered_chunk = AcquireChunk();
         // A segment of ~64 KiB of closures is ~60 draws: a frame of ~700 draws gives each
         // thread several segments, and the render passes a cut reopens stay few.
-        const char* segment_kb = std::getenv("BB_VK_SEGMENT_KB");
+        const char* segment_kb = std::getenv("WOC_VK_SEGMENT_KB");
         split_bytes = size_t(segment_kb ? std::max(1, std::atoi(segment_kb)) : 64) * 1024;
         const u32 count = RecordingThreadCount();
         for (u32 i = 0; i < count; ++i) {
@@ -147,13 +147,13 @@ Scheduler::Scheduler(const Instance& instance, bool threaded_recording)
 #if TRACY_GPU_ENABLED
     profiler_scope = reinterpret_cast<tracy::VkCtxScope*>(std::malloc(sizeof(tracy::VkCtxScope)));
 #endif
-    // bbport BB_ASYNC_SUBMIT (default on; 0: off): submissions go out from the recording threads
+    // wocport WOC_ASYNC_SUBMIT (default on; 0: off): submissions go out from the recording threads
     // once their segments are recorded, instead of this thread waiting for them (~65 us each).
     if (!workers.empty()) {
-        const char* async = std::getenv("BB_ASYNC_SUBMIT");
+        const char* async = std::getenv("WOC_ASYNC_SUBMIT");
         async_submit = !async || async[0] != '0';
         if (async_submit) {
-            std::printf("GPU: submissions go out from the recording threads (BB_ASYNC_SUBMIT)\n");
+            std::printf("GPU: submissions go out from the recording threads (WOC_ASYNC_SUBMIT)\n");
         }
     }
     AllocateWorkerCommandBuffers();
@@ -180,7 +180,7 @@ void Scheduler::BeginRendering(const RenderState& new_state) {
     if (is_rendering && render_state == new_state) {
         return;
     }
-    // bbport: a cut of the command stream (MaybeSplit) closed this render pass; it continues
+    // wocport: a cut of the command stream (MaybeSplit) closed this render pass; it continues
     // in the next command buffer without clearing its attachments again.
     const bool resume = resume_rendering && !is_rendering && render_state == new_state;
     if (!is_rendering && render_state == new_state && pass_end_caller) {
@@ -264,7 +264,7 @@ void Scheduler::EndRendering() {
         return;
     }
     static const bool trace = [] {
-        const char* env = std::getenv("BB_PASS_BREAK_TRACE");
+        const char* env = std::getenv("WOC_PASS_BREAK_TRACE");
         return env && env[0] == '1';
     }();
     if (trace) {
@@ -312,7 +312,7 @@ void Scheduler::TracePassBreak(void* caller) {
 
 void Scheduler::TraceDirectRecording(void* caller) {
     static const bool enabled = [] {
-        const char* env = std::getenv("BB_RECORDER_TRACE");
+        const char* env = std::getenv("WOC_RECORDER_TRACE");
         return env && env[0] == '1';
     }();
     if (!enabled) {
@@ -360,10 +360,10 @@ void Scheduler::SignalAfterHostCopies(std::function<void()> signal) {
         signal();
         return;
     }
-    BbCopy::FlushBatch();
+    WocCopy::FlushBatch();
     deferred_signals_issued.fetch_add(1, std::memory_order_relaxed);
     RecordOrdered([signal = std::move(signal), done = deferred_signals_done]() mutable {
-        BbCopy::AfterCopies([signal = std::move(signal), done = std::move(done)] {
+        WocCopy::AfterCopies([signal = std::move(signal), done = std::move(done)] {
             signal();
             done->fetch_add(1, std::memory_order_release);
         });
@@ -374,14 +374,14 @@ void Scheduler::SignalAfterHostCopies(std::function<void()> signal) {
 void Scheduler::WaitDeferredSignals() {
     const u64 issued = deferred_signals_issued.load(std::memory_order_relaxed);
     if (deferred_signals_done->load(std::memory_order_acquire) >= issued ||
-        BbToggle::Disabled(BbToggle::OrderedGuestWrites)) {
+        WocToggle::Disabled(WocToggle::OrderedGuestWrites)) {
         return;
     }
-    BbStats::WaitTimer timer{BbStats::host_copies_wait_ns};
+    WocStats::WaitTimer timer{WocStats::host_copies_wait_ns};
     KickRecording(true);
     while (deferred_signals_done->load(std::memory_order_acquire) < issued) {
         // Helps the copy threads the signals wait for.
-        BbCopy::WaitAsync();
+        WocCopy::WaitAsync();
         std::this_thread::yield();
     }
 }
@@ -432,7 +432,7 @@ void Scheduler::WaitHostCopiesFor(u64 address, u64 size) {
                       (slot.granule == g || slot.granule == HostCopyWildcard);
         }
         if (!overlap) {
-            BbStats::host_copy_waits_skipped.fetch_add(1, std::memory_order_relaxed);
+            WocStats::host_copy_waits_skipped.fetch_add(1, std::memory_order_relaxed);
             return;
         }
     }
@@ -455,15 +455,15 @@ void Scheduler::WaitHostCopies() {
         }
     } forget{*this, sources_seen};
     if (host_copies_done.load(std::memory_order_acquire) < host_copies_issued) {
-        BbStats::WaitTimer timer{BbStats::host_copies_wait_ns};
-        BbStats::host_copy_waits.fetch_add(1, std::memory_order_relaxed);
+        WocStats::WaitTimer timer{WocStats::host_copies_wait_ns};
+        WocStats::host_copy_waits.fetch_add(1, std::memory_order_relaxed);
         KickRecording(true);
         while (host_copies_done.load(std::memory_order_acquire) < host_copies_issued) {
             std::this_thread::yield();
         }
     }
-    BbStats::WaitTimer timer{BbStats::copy_threads_wait_ns};
-    BbCopy::WaitAsync();
+    WocStats::WaitTimer timer{WocStats::copy_threads_wait_ns};
+    WocCopy::WaitAsync();
 }
 
 void Scheduler::KickRecording(bool force) {
@@ -488,7 +488,7 @@ void Scheduler::KickRecording(bool force) {
 
 void Scheduler::MaybeSplit() {
     if (workers.size() < 2 || current_segment + 1 >= MaxSegments || !IsRecordingDeferred() ||
-        BbToggle::Disabled(BbToggle::ParallelRecording)) {
+        WocToggle::Disabled(WocToggle::ParallelRecording)) {
         return;
     }
     // Cutting inside a render pass closes and reopens it: only after a longer stretch.
@@ -635,22 +635,22 @@ void Scheduler::SyncRecording() {
         return;
     }
     KickRecording(true);
-    BbStats::WaitTimer timer{BbStats::sync_recording_ns};
+    WocStats::WaitTimer timer{WocStats::sync_recording_ns};
     std::unique_lock lk{recorder_mutex};
     recorder_idle_cv.wait(lk, [this] { return RecordingIdle(); });
 }
 
 void Scheduler::EnterDirectMode() {
-    // bbport: with submissions going out from the recording threads, the commands recorded
+    // wocport: with submissions going out from the recording threads, the commands recorded
     // here get a segment of their own, from this thread's pool, after the segments handed over:
     // the recording threads go on with those instead of this thread waiting for them (~90 us,
-    // the upscaler's passes every frame). BB_DIRECT_SEGMENT=0: the wait.
+    // the upscaler's passes every frame). WOC_DIRECT_SEGMENT=0: the wait.
     static const bool own_segment = [] {
-        const char* env = std::getenv("BB_DIRECT_SEGMENT");
+        const char* env = std::getenv("WOC_DIRECT_SEGMENT");
         return !(env && env[0] == '0');
     }();
     if (own_segment && async_submit && current_segment + 2 < MaxSegments &&
-        !BbToggle::Disabled(BbToggle::ThreadedRecording)) {
+        !WocToggle::Disabled(WocToggle::ThreadedRecording)) {
         if (is_rendering) {
             CarrySuspend(true);
             Record([](vk::CommandBuffer cmdbuf) { cmdbuf.endRendering(); });
@@ -713,10 +713,10 @@ void Scheduler::LeaveDirectSegment() {
 
 void Scheduler::RecorderThread(std::stop_token stoken, u32 index) {
     if (index == 0) {
-        Common::SetCurrentThreadName("bb:VkRecorder");
+        Common::SetCurrentThreadName("woc:VkRecorder");
     } else {
         char name[16];
-        std::snprintf(name, sizeof(name), "bb:VkRecorder%u", index);
+        std::snprintf(name, sizeof(name), "woc:VkRecorder%u", index);
         Common::SetCurrentThreadName(name);
     }
     Worker& worker = *workers[index];
@@ -731,7 +731,7 @@ void Scheduler::RecorderThread(std::stop_token stoken, u32 index) {
         // take time from guest threads. The others sleep until a new segment reaches them.
         if (active_worker.load(std::memory_order_relaxed) == index) {
             static const auto spin_time =
-                std::chrono::microseconds(BbThreads::Available() >= 12 ? 200 : 20);
+                std::chrono::microseconds(WocThreads::Available() >= 12 ? 200 : 20);
             const auto spin_until = std::chrono::steady_clock::now() + spin_time;
             for (u32 spins = 1; worker.queued.load(std::memory_order_acquire) == 0 &&
                                 ordered_queued.load(std::memory_order_acquire) == 0;
@@ -826,8 +826,8 @@ void Scheduler::Wait(u64 tick) {
         SubmitInfo info{};
         Flush(info);
     }
-    BbWaitTrace::Scope trace;
-    BbStats::WaitTimer timer{BbStats::tick_wait_ns};
+    WocWaitTrace::Scope trace;
+    WocStats::WaitTimer timer{WocStats::tick_wait_ns};
     work_semaphore.Wait(tick);
 }
 
@@ -836,14 +836,14 @@ void Scheduler::PopPendingOperations() {
         return; // every draw comes here
     }
     std::unique_lock lk(pending_ops_mutex);
-    // bbport: this runs on every draw and dispatch. Querying the timeline semaphore is an
+    // wocport: this runs on every draw and dispatch. Querying the timeline semaphore is an
     // ioctl, so it is skipped when nothing waits and done once per 32 calls (~0.3 ms; reading
     // the clock per draw instead was itself a hot spot).
     if (pending_ops.empty()) {
         return;
     }
     if (!work_semaphore.IsFree(pending_ops.front().gpu_tick)) {
-        if ((++pending_polls & 31) != 0 && !BbToggle::Disabled(BbToggle::PendingPollLimit)) {
+        if ((++pending_polls & 31) != 0 && !WocToggle::Disabled(WocToggle::PendingPollLimit)) {
             return;
         }
         work_semaphore.Refresh();
@@ -870,7 +870,7 @@ SubmissionBatch* Scheduler::AcquireBatch() {
 
 void Scheduler::AllocateWorkerCommandBuffers() {
     if (async_submit) {
-        // BB_ASYNC_SUBMIT: the earlier submissions may still be recorded (and their pools
+        // WOC_ASYNC_SUBMIT: the earlier submissions may still be recorded (and their pools
         // used) on the recording threads: segment 0 is begun there too, on its first chunk,
         // or by EnterDirectMode once they are idle.
         batch = AcquireBatch();
@@ -882,7 +882,7 @@ void Scheduler::AllocateWorkerCommandBuffers() {
         };
         current_cmdbuf = command_pool.Commit();
         Check(current_cmdbuf.begin(begin_info));
-        // bbport: the first segment (worker 0, whose pool this is) of the next submission.
+        // wocport: the first segment (worker 0, whose pool this is) of the next submission.
         if (!batch) {
             batch = AcquireBatch();
         }
@@ -937,7 +937,7 @@ void Scheduler::SubmitExecution(SubmitInfo& info) {
     // Guest memory copies into staging read by this submission (copy threads).
     WaitHostCopies();
     resume_rendering = false;
-    // bbport: the segments' command buffers in stream order (the recording threads are idle).
+    // wocport: the segments' command buffers in stream order (the recording threads are idle).
     std::array<vk::CommandBuffer, MaxSegments> cmdbufs;
     u32 num_cmdbufs = 0;
     if (workers.empty()) {
@@ -993,7 +993,7 @@ void Scheduler::SubmitExecution(SubmitInfo& info) {
     submitted_tick.store(signal_value, std::memory_order_release);
     submitted_tick.notify_all();
 
-    // bbport: no semaphore query here (an ioctl per submission, ~3% of the recording thread):
+    // wocport: no semaphore query here (an ioctl per submission, ~3% of the recording thread):
     // PopPendingOperations asks when an operation waits, the GPU signal thread on every fence.
     AllocateWorkerCommandBuffers();
     CarryResume(false);
@@ -1024,12 +1024,12 @@ void Scheduler::SubmitAsync(SubmitInfo& info) {
         Record([](vk::CommandBuffer cmdbuf) { Check(cmdbuf.end()); });
     }
     // Guest memory copies into staging this submission reads: on the copy threads by then.
-    BbCopy::FlushBatch();
+    WocCopy::FlushBatch();
     info.AddSignal(work_semaphore.Handle(), signal_value);
     // Goes out once the commands handed over before it are recorded (an ordered task: in order
     // with the other submissions and after the copies and signals queued before it).
     RecordOrdered([this, submitted = batch, info = std::move(info), signal_value]() mutable {
-        BbCopy::WaitAsync();
+        WocCopy::WaitAsync();
         std::array<vk::CommandBuffer, MaxSegments> cmdbufs;
         u32 num_cmdbufs = 0;
         for (u32 i = 0; i < MaxSegments; ++i) {

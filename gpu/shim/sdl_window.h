@@ -1,4 +1,4 @@
-// bbport: the game window. Created by the VideoOut driver on first open; the
+// wocport: the game window. Created by the VideoOut driver on first open; the
 // event pump runs on the port's window thread (see window.cpp).
 #pragma once
 #include <atomic>
@@ -34,7 +34,7 @@ public:
     void BeginTextInput(const std::string& initial, const std::string& prompt);
     /// 0 while typing, 1 confirmed (Enter), 2 cancelled (Escape); text is UTF-8.
     int PollTextInput(std::string& text);
-    /// Mouse look (bbgpu_mouse_take): motion and wheel notches since the last call, reset.
+    /// Mouse look (wocgpu_mouse_take): motion and wheel notches since the last call, reset.
     void TakeMouse(double& dx, double& dy, int& wheel_up, int& wheel_down);
     /// The window holds the mouse (relative mode) for looking around.
     bool MouseCaptured() const { return mouse_captured.load(std::memory_order_relaxed); }

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Generates gpu/shim/bbport_gnm_table.inc: the eboot's libGnm functions the engine calls, with a
+"""Generates gpu/shim/wocport_gnm_table.inc: the eboot's libGnm functions the engine calls, with a
 relocatable prologue (whole instructions >= 5 bytes, no RIP-relative operands or branches) for the
-call census hooks (BB_GNM_CENSUS) and, later, their replacements.
+call census hooks (WOC_GNM_CENSUS) and, later, their replacements.
 
-Usage: gen_gnm_table.py region.asm gnm_cg.txt gnm_sigs.txt > gpu/shim/bbport_gnm_table.inc
+Usage: gen_gnm_table.py region.asm gnm_cg.txt gnm_sigs.txt > gpu/shim/wocport_gnm_table.inc
 (region.asm: objdump -D -b binary -m i386:x86-64 -M intel --insn-width=16 of the extracted text, 0x1068000-0x10a0000;
 gnm_cg.txt: tools/re/callgraph.py; gnm_sigs.txt: tools/re/gnm_sigs.py)
 """

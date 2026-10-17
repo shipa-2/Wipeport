@@ -1,7 +1,7 @@
 /* Narrow, explicit PS4 libc contracts. No automatic success stubs. */
 #define _CRT_RAND_S
 #include "runtime.h"
-#include "gpu/bbgpu.h"
+#include "gpu/wocgpu.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,7 +27,7 @@ static _Thread_local unsigned char *tls_blocks[TLS_MODULES];
 static void *process_param;
 void runtime_set_procparam(void *param) {
     process_param=param;
-    /* bbport: the game's libc heap settings (SceProcParam +0x30: SceLibcParam; its +0x10.. pointers to
+    /* wocport: the game's libc heap settings (SceProcParam +0x30: SceLibcParam; its +0x10.. pointers to
      * the heap size, delayed and extended allocation flags, initial size). */
     const uint64_t *p=(const uint64_t *)param;
     if (!p || p[0]<0x38 || !p[6]) return;
@@ -276,7 +276,7 @@ uintptr_t runtime_resolve(const char *name, int is_data) {
     if (save) return save;
     uintptr_t file = runtime_file_resolve(name);
     if (file) return file;
-    return bbgpu_resolve(name);
+    return wocgpu_resolve(name);
 }
 static const struct { const char *nid, *symbol; } import_names[]={
 #include "import_names.inc"

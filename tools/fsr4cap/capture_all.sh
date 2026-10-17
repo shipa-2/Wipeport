@@ -10,13 +10,13 @@
 # INT8, which every GPU runs (vkd3d-proton's cooperative matrices hidden: proton.sh), and the
 # DLL's FP8 matrix variant for RDNA4 (other passes and weights, issue #12). The FP8 one is probed
 # with the first size and recorded only when the DLL dispatches other shaders with the matrices
-# visible: on RDNA4. BB_FSR4CAP_FP8=1: also elsewhere, through GE-Proton's FP16 emulation of FP8
+# visible: on RDNA4. WOC_FSR4CAP_FP8=1: also elsewhere, through GE-Proton's FP16 emulation of FP8
 # matrices (RDNA3: DXIL_SPIRV_CONFIG=wmma_rdna3_workaround), to test the variant; 0: never.
 # Without it the INT8 set is built all the same.
 # AMD's DLL offers FSR 4.1 only on GPUs it knows: where it offers FSR 3/2 alone (e.g. the ROG
 # Ally's Z1 Extreme, an RDNA3 APU), each Proton build is tried once more with the GPU reported as
 # an RX 7800 XT (DXVK_CONFIG). The recording only captures the passes; they run on the real GPU.
-# BB_FSR4CAP_SPOOF=0 turns this off.
+# WOC_FSR4CAP_SPOOF=0 turns this off.
 # Exit status 3 when no Proton build is installed (or none has its Steam runtime), 5 when the
 # upscaler did not run, 8 on NixOS with neither umu-run nor nix-shell to get it (nor, in the
 # AppImage, the user's systemd to run the recording on the host).
@@ -34,32 +34,32 @@ done_count=0
 # AppImage: Steam's runtime (pressure-vessel's bwrap) cannot create its namespaces inside the
 # AppImage's own (SteamOS: "No permissions to create a new namespace"). The host unit gets the
 # display: on SteamOS the user's systemd has none, and Proton then waits without an error.
-# BB_FSR4CAP_RUNNER=steam: Steam's runtime anyway (inside an FHS environment such as steam-run).
-if [[ ( -e /etc/NIXOS || -n ${BB_PREBUILT:-} ) && ${BB_FSR4CAP_RUNNER:-} != steam ]] &&
+# WOC_FSR4CAP_RUNNER=steam: Steam's runtime anyway (inside an FHS environment such as steam-run).
+if [[ ( -e /etc/NIXOS || -n ${WOC_PREBUILT:-} ) && ${WOC_FSR4CAP_RUNNER:-} != steam ]] &&
    ! command -v umu-run >/dev/null; then
-    if [[ -e /etc/NIXOS ]] && command -v nix-shell >/dev/null && [[ -z ${BB_FSR4CAP_UMU_SHELL:-} ]]; then
+    if [[ -e /etc/NIXOS ]] && command -v nix-shell >/dev/null && [[ -z ${WOC_FSR4CAP_UMU_SHELL:-} ]]; then
         nixpkgs=()
         nix-instantiate --find-file nixpkgs >/dev/null 2>&1 || nixpkgs=(-I nixpkgs=channel:nixos-unstable)
         echo "NixOS: umu-launcher from nix-shell (the first time it is downloaded, ~1.7 GB)"
-        exec env BB_FSR4CAP_UMU_SHELL=1 nix-shell "${nixpkgs[@]}" -p umu-launcher \
+        exec env WOC_FSR4CAP_UMU_SHELL=1 nix-shell "${nixpkgs[@]}" -p umu-launcher \
             --run "bash $(printf %q "$0") $(printf %q "$R")"
     fi
-    if [[ -z ${BB_FSR4CAP_ON_HOST:-} ]] && command -v systemd-run >/dev/null &&
+    if [[ -z ${WOC_FSR4CAP_ON_HOST:-} ]] && command -v systemd-run >/dev/null &&
        systemctl --user show-environment >/dev/null 2>&1; then
         echo "Recording on the host (systemd-run --user), outside the AppImage"
         host=$R/host
         rm -rf "$host"
         mkdir -p "$host"
         cp -- "$(dirname -- "$0")/capture_all.sh" "$(dirname -- "$0")/proton.sh" "$host/"
-        unit=bbport-fsr4cap-$$
+        unit=wocport-fsr4cap-$$
         settings=()
-        for name in PROTONPATH FSR4CAP_VERSION BB_FSR4CAP_FP8 BB_FSR4CAP_SPOOF VKD3D_DISABLE_EXTENSIONS \
+        for name in PROTONPATH FSR4CAP_VERSION WOC_FSR4CAP_FP8 WOC_FSR4CAP_SPOOF VKD3D_DISABLE_EXTENSIONS \
                     WINEDEBUG DXVK_CONFIG DISPLAY WAYLAND_DISPLAY XAUTHORITY; do
             if [[ -n ${!name+set} ]]; then settings+=("--setenv=$name=${!name}"); fi
         done
         # A login shell: the user's PATH (nix-shell) and NIX_PATH.
         systemd-run --user --unit="$unit" --collect --wait --pipe --quiet \
-            --setenv=BB_FSR4CAP_ON_HOST=1 "${settings[@]}" \
+            --setenv=WOC_FSR4CAP_ON_HOST=1 "${settings[@]}" \
             /bin/sh -lc 'exec bash "$0" "$1"' "$host/capture_all.sh" "$R" &
         relay=$!
         # Cancelled (the launcher's button): the unit on the host stops too.
@@ -117,7 +117,7 @@ for candidate in "${candidates[@]}"; do
     echo "Proton: $PROTONPATH"
     status=0
     capture "${first[@]}" || status=$?
-    if [[ $status != 0 && $status != 3 && ${BB_FSR4CAP_SPOOF:-1} != 0 &&
+    if [[ $status != 0 && $status != 3 && ${WOC_FSR4CAP_SPOOF:-1} != 0 &&
           $(tail -1 "$R/fsr4cap.log" 2>/dev/null || true) == "no version matching"* ]]; then
         echo "  FSR 4.1 not offered on this GPU; again as an RX 7800 XT"
         previous=${DXVK_CONFIG-}
@@ -158,8 +158,8 @@ progress "${first[@]}"
 # The FP8 variant: the same size with the matrices visible. Another variant when its shaders differ.
 rm -rf "$R/fp8"
 fp8=0
-if [[ ${BB_FSR4CAP_FP8:-auto} != 0 ]]; then
-    [[ ${BB_FSR4CAP_FP8:-auto} != 1 ]] || fp8_config=wmma_rdna3_workaround
+if [[ ${WOC_FSR4CAP_FP8:-auto} != 0 ]]; then
+    [[ ${WOC_FSR4CAP_FP8:-auto} != 1 ]] || fp8_config=wmma_rdna3_workaround
     variant=fp8
     shaders() { (cd "$1" 2>/dev/null && ls cs_*.dxil 2>/dev/null); }
     if capture "${first[@]}" &&

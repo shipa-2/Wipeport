@@ -206,7 +206,7 @@ std::vector<const char*> GetInstanceExtensions(Frontend::WindowSystemType window
         extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     }
 
-    // bbport (AstroQuest): what the runtime of the machine's own headset wants of an instance
+    // wocport (AstroQuest): what the runtime of the machine's own headset wants of an instance
     // it is handed pictures by. (The names have to outlive the making of the instance.)
     static std::vector<std::string> headset_extensions;
     headset_extensions = Core::Vr::OpenXrHost::Instance().VulkanInstanceExtensions();
@@ -300,7 +300,7 @@ vk::UniqueInstance CreateInstance(Frontend::WindowSystemType window_type, bool e
 
     const auto layers = GetInstanceLayers(enable_validation, enable_crash_diagnostic);
     auto extensions = GetLayerExtensions(GetInstanceExtensions(window_type, true), layers);
-    // bbport: DLSS (optional bridge library) needs its own instance extensions.
+    // wocport: DLSS (optional bridge library) needs its own instance extensions.
     if (Dlss* dlss = Dlss::Get()) {
         dlss->AppendInstanceExtensions(extensions);
     }

@@ -3,22 +3,22 @@
 ## ✅ Что исправлено
 
 ### 1. Маска реактивности не сохранялась
-- **Файл:** `gpu/shim/bbport_settings.cpp`
-- **Проблема:** Чекбокс "Показать маску (отладка)" не сохранялся в `bbport.ini`
+- **Файл:** `gpu/shim/wocport_settings.cpp`
+- **Проблема:** Чекбокс "Показать маску (отладка)" не сохранялся в `wocport.ini`
 - **Решение:** Добавлена загрузка/сохранение параметра `debug_view`
 
 ### 2. 🔥 ДИНАМИЧЕСКОЕ ПЕРЕКЛЮЧЕНИЕ ПРЕСЕТОВ на RX 7800 XT
 - **Файлы:** 
   - `gpu/shadps4/video_core/renderer_vulkan/vk_temporal_upscaler.cpp`
-  - `gpu/shim/bbport_overlay.cpp`
+  - `gpu/shim/wocport_overlay.cpp`
 - **Проблема:** RX 7800 XT не поддерживает `blit D32S8`, поэтому требовался перезапуск
 - **Решение:**
   - Fallback: UI depth очищается вместо копирования (работает корректно)
-  - Убрана блокировка `BB_LIVE_SCALING_UNSUPPORTED`
+  - Убрана блокировка `WOC_LIVE_SCALING_UNSUPPORTED`
   - Обновлено меню — убрано требование перезапуска для пресетов
 
 ### 3. Правильная конфигурация
-- **Файл:** `bbport.ini`
+- **Файл:** `wocport.ini`
 - **Критично:** `jitter=1` (БЫЛО ВЫКЛЮЧЕНО!)
 - Оптимизированы параметры резкости и маски
 
@@ -61,7 +61,7 @@
 
 ## 📝 Изменённые файлы
 
-- `gpu/shim/bbport_settings.cpp`
+- `gpu/shim/wocport_settings.cpp`
 - `gpu/shadps4/video_core/renderer_vulkan/vk_temporal_upscaler.cpp`
-- `gpu/shim/bbport_overlay.cpp`
-- `bbport.ini`
+- `gpu/shim/wocport_overlay.cpp`
+- `wocport.ini`

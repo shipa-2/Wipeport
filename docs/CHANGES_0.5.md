@@ -1,6 +1,6 @@
 **English** · [Русский](#русский)
 
-bbport is the counterpart of Wine + DXVK for a single game: Bloodborne (CUSA03173, v1.09) on Linux.
+wocport is the counterpart of Wine + DXVK for a single game: Bloodborne (CUSA03173, v1.09) on Linux.
 The game's x86-64 code runs directly on the CPU, a runtime written for this game replaces the PS4
 system libraries, and the graphics are translated to Vulkan.
 
@@ -17,14 +17,14 @@ Details and measurements of each step are in the prerelease notes:
 **The new memory and translation model — the default on AMD**
 - Launcher: *Mode → Memory and translation model*. *Auto* (the default) gives AMD GPUs the new
   model and NVIDIA, Intel and others the memory model of 0.3 with all its fixes; *New* and *Old*
-  choose by hand. Without the launcher: `BB_PC_MODEL=1/0` (unset: as *Auto*).
+  choose by hand. Without the launcher: `WOC_PC_MODEL=1/0` (unset: as *Auto*).
 - The GPU uses the game's memory where it is, as a PC game's buffers; what it reads often is kept
   in VRAM — on AMD in a sparse buffer (the arena), on other GPUs by the layer's memory module
-  without sparse rebinding (`BB_LAYER_MEMORY=1/0` by hand). The PS4 command processor's work is
+  without sparse rebinding (`WOC_LAYER_MEMORY=1/0` by hand). The PS4 command processor's work is
   translated rather than emulated: memory writes and fences are done by the GPU in stream order,
   `COPY_DATA`, `COND_EXEC`, predication, `MEM_SEMAPHORE` and the GPU clock (100 MHz, as on the
   PS4) follow the GPU's timeline.
-- The game's occlusion queries as Vulkan queries are available with `BB_OCCLUSION_QUERIES=1`, off
+- The game's occlusion queries as Vulkan queries are available with `WOC_OCCLUSION_QUERIES=1`, off
   by default: with an upscaler the scene is drawn smaller and jittered, and a lamp's glow then
   flashed grey over the whole frame now and then. Off, everything counts as visible, as in the
   0.3 model.
@@ -60,10 +60,10 @@ Details and measurements of each step are in the prerelease notes:
 - Damaged game extractions are reported instead of hanging while loading shaders (#81);
   `scripts/game_check.py GAME_DIR` checks every file.
 - NVIDIA in the AppImage: the host's EGL vendor files are passed along (without them NVIDIA's
-  driver gave no `vkCreateInstance` on some hosts, #107; `BB_NVIDIA_EGL=0`: off); `--vulkan-info`
+  driver gave no `vkCreateInstance` on some hosts, #107; `WOC_NVIDIA_EGL=0`: off); `--vulkan-info`
   prints the driver report together with the summary.
 - AMD Polaris, Vega and their APUs under RADV: `RADV_DEBUG=nohiz` is set automatically (black
-  halos and vanishing geometry, #54, #99; your own `RADV_DEBUG` or `BB_AUTO_NOHIZ=0` keeps it off).
+  halos and vanishing geometry, #54, #99; your own `RADV_DEBUG` or `WOC_AUTO_NOHIZ=0` keeps it off).
 - The FSR 4.1.1 build also finds Proton installed system-wide (PR #112). The bundled Dear ImGui
   is private to the GPU library: Vulkan layers with their own copy no longer crash the game
   (PR #113).
@@ -76,7 +76,7 @@ Details and measurements of each step are in the prerelease notes:
   (the same crash was reported for a Windows build, #100).
 - Small mips of tiled textures are detiled the way the GPU stores them (from shadPS4 #5196).
 - Chinese/Japanese/Korean Windows locales in the game preparation (#55); an `eboot.bin` dumped as a
-  plain ELF (#49); stick calibration for Switch Pro clones (#70, PR #71); `BB_FSR4_STATS=1`
+  plain ELF (#49); stick calibration for Switch Pro clones (#70, PR #71); `WOC_FSR4_STATS=1`
   (PR #80).
 
 **Known limits:** one machine was tested thoroughly (RX 7800 XT, Mesa/RADV). Banding in dark
@@ -87,7 +87,7 @@ are not bundled. `SHA256SUMS` accompanies the download.
 
 ## Русский
 
-bbport — аналог Wine + DXVK для одной игры: Bloodborne (CUSA03173, v1.09) на Linux. Код игры x86-64
+wocport — аналог Wine + DXVK для одной игры: Bloodborne (CUSA03173, v1.09) на Linux. Код игры x86-64
 выполняется прямо на процессоре, системные библиотеки PS4 заменяет рантайм, написанный под эту игру,
 графика переводится в Vulkan.
 
@@ -104,14 +104,14 @@ bbport — аналог Wine + DXVK для одной игры: Bloodborne (CUSA
 **Новая модель памяти и трансляции — по умолчанию на AMD**
 - Лаунчер: *Режим работы → Модель памяти и трансляции*. *Авто* (по умолчанию) даёт видеокартам
   AMD новую модель, а NVIDIA, Intel и остальным — модель памяти 0.3 со всеми исправлениями;
-  *Новая* и *Старая* — вручную. Без лаунчера — `BB_PC_MODEL=1/0` (не задано — как *Авто*).
+  *Новая* и *Старая* — вручную. Без лаунчера — `WOC_PC_MODEL=1/0` (не задано — как *Авто*).
 - Видеокарта работает с памятью игры на месте, как с буферами игры для ПК; то, что она читает
   часто, держится в VRAM — на AMD в sparse-буфере (арене), на остальных видеокартах модулем
-  памяти прослойки без sparse-перепривязок (`BB_LAYER_MEMORY=1/0` — вручную). Работа командного
+  памяти прослойки без sparse-перепривязок (`WOC_LAYER_MEMORY=1/0` — вручную). Работа командного
   процессора PS4 переводится, а не эмулируется: записи в память и метки делает видеочип в порядке
   потока, `COPY_DATA`, `COND_EXEC`, предикация, `MEM_SEMAPHORE` и часы видеочипа (100 МГц, как у
   PS4) — во времени видеочипа.
-- Occlusion-запросы игры как запросы Vulkan — по `BB_OCCLUSION_QUERIES=1`, по умолчанию выключены:
+- Occlusion-запросы игры как запросы Vulkan — по `WOC_OCCLUSION_QUERIES=1`, по умолчанию выключены:
   с апскейлером сцена рисуется меньше и со сдвигом, и свечение лампы время от времени вспыхивало
   серым на весь кадр. Без них всё считается видимым, как в модели 0.3.
 - Модуль памяти прослойки (NVIDIA и другие): некоторые запуски больше не гоняют видеокарту в
@@ -148,10 +148,10 @@ bbport — аналог Wine + DXVK для одной игры: Bloodborne (CUSA
 - Повреждённая распаковка игры называется прямо, а не приводит к зависанию на загрузке шейдеров
   (#81); `scripts/game_check.py ПАПКА_ИГРЫ` проверяет все файлы.
 - NVIDIA в AppImage: передаются файлы EGL-вендоров хоста (без них драйвер NVIDIA на некоторых
-  системах не отдавал `vkCreateInstance`, #107; `BB_NVIDIA_EGL=0` — выключить); `--vulkan-info`
+  системах не отдавал `vkCreateInstance`, #107; `WOC_NVIDIA_EGL=0` — выключить); `--vulkan-info`
   печатает отчёт о драйвере вместе со сводкой.
 - AMD Polaris, Vega и их APU под RADV: `RADV_DEBUG=nohiz` ставится сам (чёрные ореолы и пропадающая
-  геометрия, #54, #99; свой `RADV_DEBUG` или `BB_AUTO_NOHIZ=0` — не ставить).
+  геометрия, #54, #99; свой `RADV_DEBUG` или `WOC_AUTO_NOHIZ=0` — не ставить).
 - Сборка FSR 4.1.1 находит и Proton, установленный в систему (PR #112). Встроенный Dear ImGui
   скрыт внутри библиотеки GPU: слои Vulkan со своей копией больше не роняют игру (PR #113).
 
@@ -163,7 +163,7 @@ bbport — аналог Wine + DXVK для одной игры: Bloodborne (CUSA
   команд (такой же вылет был у сборки для Windows, #100).
 - Мелкие мипы тайловых текстур раскладываются так, как их хранит видеокарта (из shadPS4 #5196).
 - Китайская/японская/корейская локали Windows при подготовке игры (#55); `eboot.bin`, снятый как
-  обычный ELF (#49); калибровка стиков у клонов Switch Pro (#70, PR #71); `BB_FSR4_STATS=1` (PR #80).
+  обычный ELF (#49); калибровка стиков у клонов Switch Pro (#70, PR #71); `WOC_FSR4_STATS=1` (PR #80).
 
 **Ограничения:** подробно проверена одна машина (RX 7800 XT, Mesa/RADV). Полосы в тёмных
 градиентах — исправление не подтверждено. Сборка для Windows — отдельный порт.

@@ -145,7 +145,7 @@ union Regs {
         LsHsConfig ls_hs_config;
         u32 vgt_gs_vert_itemsize[4];
         TessellationConfig tess_config;
-        AlphaToMask alpha_to_mask; // bbport: DB_ALPHA_TO_MASK (0xA2DC)
+        AlphaToMask alpha_to_mask; // wocport: DB_ALPHA_TO_MASK (0xA2DC)
         INSERT_PADDING_WORDS(2);
         PolygonOffset poly_offset;
         GsInstances vgt_gs_instance_cnt;
@@ -194,7 +194,7 @@ union Regs {
     void SetDefaults();
 };
 
-// bbport: register blocks written by a stretch of packets, and their values at its end. The
+// wocport: register blocks written by a stretch of packets, and their values at its end. The
 // draw-preparation scanner records one per submission so a worker reaches the state at the
 // start of any later submission without replaying the packets in between.
 struct RegDirty {

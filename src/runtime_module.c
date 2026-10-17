@@ -16,7 +16,7 @@ typedef struct {
     uint64_t tls_index, tls_init, tls_init_size, tls_size, tls_align, segment_count;
     uint64_t segments[4][3];
 } ModuleRecord;
-_Static_assert(sizeof(ModuleRecord)==256+13*8+8+96,"BBMODS01 record");
+_Static_assert(sizeof(ModuleRecord)==256+13*8+8+96,"WOCMODS1 record");
 static ModuleRecord modules[MAX_MODULES];
 static size_t module_count;
 
@@ -48,7 +48,7 @@ int runtime_modules_load(const char *path, unsigned char *image) {
     FILE *f=fopen(path,"rb");
     if (!f) return -1;
     char magic[8]; uint64_t count=0;
-    int ok=fread(magic,1,8,f)==8 && !memcmp(magic,"BBMODS01",8) && fread(&count,8,1,f)==1 && count<=MAX_MODULES;
+    int ok=fread(magic,1,8,f)==8 && !memcmp(magic,"WOCMODS1",8) && fread(&count,8,1,f)==1 && count<=MAX_MODULES;
     for (uint64_t i=0;ok && i<count;++i) {
         ModuleRecord *m=&modules[i];
         ok=fread(m,sizeof(*m),1,f)==1;

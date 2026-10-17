@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// bbport: the group counts of an indirect dispatch, checked on the GPU before it runs
+// wocport: the group counts of an indirect dispatch, checked on the GPU before it runs
 // (vk_indirect_guard.cpp). Counts no game dispatches on purpose (billions of groups: garbage in
 // the arguments) would keep the GPU busy past the kernel's timeout and lose the device; such a
 // dispatch runs no groups instead, and is counted.

@@ -342,7 +342,7 @@ IR::VectorReg Translator::GetScratchVgpr(u32 offset) {
 }
 
 namespace {
-// bbport: SDWA (GCN3, used by PS4 Pro shaders): the byte or word a selector picks out of a dword.
+// wocport: SDWA (GCN3, used by PS4 Pro shaders): the byte or word a selector picks out of a dword.
 struct SdwaField {
     u32 offset;
     u32 width;
@@ -1302,9 +1302,9 @@ void Translator::Translate(IR::Block* block, u32 start_pc, IR::Condition cond,
     }
     ir = IR::IREmitter{*block, block->begin()};
     pc = start_pc;
-    // BB_OPCODE_STATS=1 (diagnostics): every opcode the first time a shader uses it, with the
+    // WOC_OPCODE_STATS=1 (diagnostics): every opcode the first time a shader uses it, with the
     // shader; also whether it came with SDWA or DPP.
-    static const bool opcode_stats = std::getenv("BB_OPCODE_STATS") != nullptr;
+    static const bool opcode_stats = std::getenv("WOC_OPCODE_STATS") != nullptr;
     for (const auto& inst : inst_list) {
         pc += inst.length;
         if (opcode_stats) {

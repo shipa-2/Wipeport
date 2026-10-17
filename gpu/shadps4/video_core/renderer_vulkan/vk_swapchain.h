@@ -54,7 +54,7 @@ public:
         return swapchain;
     }
 
-    /// bbport: false while the window is minimised (0x0 surface): frames are not presented.
+    /// wocport: false while the window is minimised (0x0 surface): frames are not presented.
     bool IsPresentable() const {
         return !zero_extent && swapchain;
     }
@@ -137,7 +137,7 @@ private:
     u32 image_index = 0;
     u32 frame_index = 0;
     bool needs_recreation = true;
-    bool zero_extent = false; ///< bbport: the surface was 0x0 (minimised) at the last Create
+    bool zero_extent = false; ///< wocport: the surface was 0x0 (minimised) at the last Create
     bool needs_hdr = false;    // The game requested HDR swapchain
     bool supports_hdr = false; // SC supports HDR output
 };

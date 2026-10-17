@@ -1,4 +1,4 @@
-# Launcher environment: `nix-shell launcher/shell.nix --run 'python3 launcher/bbport_launcher.py'`
+# Launcher environment: `nix-shell launcher/shell.nix --run 'python3 launcher/wocport_launcher.py'`
 { pkgs ? import <nixpkgs> {} }:
 pkgs.mkShell {
   packages = with pkgs; [

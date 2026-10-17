@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# tools/frame.sh OUT.png: the game's next presented frame (BB_PRESENT_DUMP_TRIGGER=out/present_trigger,
-# BB_DUMP_DIR=out/present, set when the game starts) as a PNG, without a screen capture: works
+# tools/frame.sh OUT.png: the game's next presented frame (WOC_PRESENT_DUMP_TRIGGER=out/present_trigger,
+# WOC_DUMP_DIR=out/present, set when the game starts) as a PNG, without a screen capture: works
 # while the game window is on another workspace.
-# KIND=final: the frame after FSR and post processing instead (BB_FINAL_DUMP_TRIGGER=out/final_trigger).
+# KIND=final: the frame after FSR and post processing instead (WOC_FINAL_DUMP_TRIGGER=out/final_trigger).
 set -u
 cd -- "$(dirname -- "$0")/.."
 out=${1:?usage: tools/frame.sh OUT.png}

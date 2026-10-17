@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <boost/container/small_vector.hpp>
-#include "bbport_toggles.h"
-#include "bblayer_write_traps.h"
+#include "wocport_toggles.h"
+#include "woclayer_write_traps.h"
 #include "common/assert.h"
 #include "common/debug.h"
 #include "common/div_ceil.h"
@@ -60,7 +60,7 @@ constexpr size_t PM_PAGE_SIZE = 4_KB;
 constexpr size_t PM_PAGE_BITS = 12;
 
 namespace {
-/// bbport: write fault sites (guest code), an open-addressing table keyed by the instruction.
+/// wocport: write fault sites (guest code), an open-addressing table keyed by the instruction.
 struct FaultSite {
     std::atomic<u64> rip{0};
     std::atomic<u64> caller{0};
@@ -71,7 +71,7 @@ std::array<FaultSite, 512> fault_sites;
 std::atomic<u64> fault_sites_dropped{0};
 constexpr u64 GuestImage = 0x800000000ull, GuestImageEnd = 0x810000000ull;
 constexpr u64 HostSite = 1ull << 63;
-constexpr u64 ReadSite = 1ull << 62; ///< a read fault (BB_READBACKS=2 protects GPU data from reads)
+constexpr u64 ReadSite = 1ull << 62; ///< a read fault (WOC_READBACKS=2 protects GPU data from reads)
 
 /// "+offset" for guest code, the symbol for host code.
 std::string SiteName(u64 key) {
@@ -223,19 +223,19 @@ void PageManager::ReportFaultSites() {
     std::printf("\n");
 }
 
-// bbport: with the game's memory in place (no write tracking), the pages under images are
-// trapped for writes (BbLayer::WriteTraps::Image): a write nobody announced (the game's own copy
+// wocport: with the game's memory in place (no write tracking), the pages under images are
+// trapped for writes (WocLayer::WriteTraps::Image): a write nobody announced (the game's own copy
 // loops, its heap over an old texture) still reaches the texture cache, on any game and GPU,
 // without hooks in the game's code; the hooks and the libc wrappers only make it sooner.
-// BB_IMAGE_TRAPS=0: announced writes only, as before. Latched at the first use: the counts must
+// WOC_IMAGE_TRAPS=0: announced writes only, as before. Latched at the first use: the counts must
 // match their traps for the whole run.
 static bool ImageTraps() {
     static const bool on = [] {
-        const char* env = std::getenv("BB_IMAGE_TRAPS");
+        const char* env = std::getenv("WOC_IMAGE_TRAPS");
         const bool enabled = !(env && env[0] == '0') && VideoCore::GuestInPlace() &&
                              !VideoCore::WriteTracking() && !VideoCore::WriteVerify();
         if (enabled) {
-            std::printf("Guest memory: writes under images are trapped (BB_IMAGE_TRAPS=0: "
+            std::printf("Guest memory: writes under images are trapped (WOC_IMAGE_TRAPS=0: "
                         "announced writes only)\n");
         }
         return enabled;
@@ -309,38 +309,38 @@ struct PageManager::Impl {
     static bool GuestFaultSignalHandler(void* context, void* fault_address) {
         const auto addr = reinterpret_cast<VAddr>(fault_address);
         NoteFaultSite(context, addr);
-        // bbport: the draw recording thread handles its faults inline too (vk_draw_pipe.h).
+        // wocport: the draw recording thread handles its faults inline too (vk_draw_pipe.h).
         const auto is_gpu_thread = rasterizer->IsGpuSideThread();
         if (is_gpu_thread) {
-            BbStats::gpu_signal_faults.fetch_add(1, std::memory_order_relaxed);
+            WocStats::gpu_signal_faults.fetch_add(1, std::memory_order_relaxed);
         }
-        // Traps on reads too (no access, BbLayer::WriteTraps::NoAccess): their owner first.
-        if (BbLayer::WriteTraps::Reasons(addr) & BbLayer::WriteTraps::VramData) {
+        // Traps on reads too (no access, WocLayer::WriteTraps::NoAccess): their owner first.
+        if (WocLayer::WriteTraps::Reasons(addr) & WocLayer::WriteTraps::VramData) {
             return rasterizer->OnVramDataAccess(addr, is_gpu_thread);
         }
-        if (BbLayer::WriteTraps::Reasons(addr) & BbLayer::WriteTraps::QueryReads) {
+        if (WocLayer::WriteTraps::Reasons(addr) & WocLayer::WriteTraps::QueryReads) {
             return rasterizer->OnOcclusionPageAccess(
                 addr, u64(static_cast<const ucontext_t*>(context)->uc_mcontext.gregs[REG_RIP]),
                 Common::IsWriteError(context), is_gpu_thread);
         }
         if (Common::IsWriteError(context)) {
             if (ImageTraps() &&
-                !(BbLayer::WriteTraps::Reasons(addr) & BbLayer::WriteTraps::Image)) {
+                !(WocLayer::WriteTraps::Reasons(addr) & WocLayer::WriteTraps::Image)) {
                 // Not an image's trap: another owner's being lifted by another thread, or one
                 // lifted meanwhile (the write runs again), or a write the game may not do.
                 int prot = 0, type = -1;
                 uintptr_t end = 0;
                 return runtime_memory_vma_info(addr, &prot, &type, &end) && (prot & 0x2);
             }
-            BbStats::Timer timer{BbStats::t_write_faults};
+            WocStats::Timer timer{WocStats::t_write_faults};
             const bool handled = rasterizer->OnWriteFault(
                 addr, is_gpu_thread,
                 u64(static_cast<const ucontext_t*>(context)->uc_mcontext.gregs[REG_RIP]));
             current_fault_rip = 0;
             return handled;
         } else {
-            BbStats::read_faults.fetch_add(1, std::memory_order_relaxed);
-            BbStats::Timer timer{BbStats::t_read_faults};
+            WocStats::read_faults.fetch_add(1, std::memory_order_relaxed);
+            WocStats::Timer timer{WocStats::t_read_faults};
             return rasterizer->ReadMemory(addr, 8, is_gpu_thread);
         }
         return false;
@@ -483,7 +483,7 @@ struct PageManager::Impl {
         release_pending();
     }
 
-    /// bbport ImageTraps: the images over each page; a page is trapped while one is there.
+    /// wocport ImageTraps: the images over each page; a page is trapped while one is there.
     template <bool track>
     void UpdateImageTraps(VAddr addr, u64 size) {
         std::call_once(image_watchers_once, [this] {
@@ -501,8 +501,8 @@ struct PageManager::Impl {
         u64 run_begin = 0, run_pages = 0;
         const auto flush = [&] {
             if (run_pages != 0) {
-                BbLayer::WriteTraps::Set(run_begin << PM_PAGE_BITS, run_pages << PM_PAGE_BITS,
-                                         BbLayer::WriteTraps::Image, track);
+                WocLayer::WriteTraps::Set(run_begin << PM_PAGE_BITS, run_pages << PM_PAGE_BITS,
+                                         WocLayer::WriteTraps::Image, track);
                 run_pages = 0;
             }
         };
@@ -541,12 +541,12 @@ struct PageManager::Impl {
 };
 
 #ifdef __linux__
-// bbport: write tracking with userfaultfd write-protection instead of mprotect. mprotect takes
+// wocport: write tracking with userfaultfd write-protection instead of mprotect. mprotect takes
 // the address space lock for writing and splits mappings; while guest threads fault on
 // per-frame buffers and the GPU thread re-protects uploaded pages, every page fault in the
 // process (copy threads included) waits for it. UFFDIO_WRITEPROTECT changes page table bits
 // under the lock for reading. Read protection (readbacks) still uses mprotect: userfaultfd
-// write-protection cannot deny reads. BB_UFFD=1.
+// write-protection cannot deny reads. WOC_UFFD=1.
 struct UffdImpl : public PageManager::Impl {
 private:
     std::jthread ufd_thread;
@@ -634,13 +634,13 @@ public:
                 address_space.Protect(address, size, Core::MemoryPermission::ReadWrite);
             }
         }
-        // Counted like AddressSpace::Protect (BB_FRAME_LOG protect_ms).
-        BbStats::Timer timer{BbStats::t_protect};
-        BbStats::protect_calls.fetch_add(1, std::memory_order_relaxed);
-        BbStats::protect_pages.fetch_add(last - first, std::memory_order_relaxed);
+        // Counted like AddressSpace::Protect (WOC_FRAME_LOG protect_ms).
+        WocStats::Timer timer{WocStats::t_protect};
+        WocStats::protect_calls.fetch_add(1, std::memory_order_relaxed);
+        WocStats::protect_pages.fetch_add(last - first, std::memory_order_relaxed);
         if (!allow_write) {
-            BbStats::protect_revoke_calls.fetch_add(1, std::memory_order_relaxed);
-            BbStats::protect_revoke_pages.fetch_add(last - first, std::memory_order_relaxed);
+            WocStats::protect_revoke_calls.fetch_add(1, std::memory_order_relaxed);
+            WocStats::protect_revoke_pages.fetch_add(last - first, std::memory_order_relaxed);
         }
         uffdio_writeprotect wp{};
         wp.range.start = address;
@@ -653,7 +653,7 @@ public:
     }
 
     void UffdHandler(std::stop_token token) {
-        Common::SetCurrentThreadName("bb:Uffd");
+        Common::SetCurrentThreadName("woc:Uffd");
         while (!token.stop_requested()) {
             pollfd pollfd{};
             pollfd.fd = uffd;
@@ -674,7 +674,7 @@ public:
             const VAddr addr = msg.arg.pagefault.address;
             const auto ptid = msg.arg.pagefault.feat.ptid;
             {
-                BbStats::Timer timer{BbStats::t_write_faults};
+                WocStats::Timer timer{WocStats::t_write_faults};
                 rasterizer->OnWriteFault(addr, rasterizer->IsGpuSideThreadId(ptid));
             }
             // Protect() clears with DONTWAKE (it may run for pages nobody waits on).
@@ -691,7 +691,7 @@ struct SignalImpl : public PageManager::Impl {
     SignalImpl(Vulkan::Rasterizer* rasterizer_) : Impl() {
         rasterizer = rasterizer_;
 
-        // Should be called first (bbport: after BB_VRAM_ACCESS_TRAP, priority 0, diagnostics only).
+        // Should be called first (wocport: after WOC_VRAM_ACCESS_TRAP, priority 0, diagnostics only).
         constexpr u32 priority = 1;
         Core::Signals::Instance()->RegisterAccessViolationHandler(GuestFaultSignalHandler,
                                                                   priority);
@@ -699,7 +699,7 @@ struct SignalImpl : public PageManager::Impl {
 
     void Protect(VAddr address, size_t size, Core::MemoryPermission perms) override {
         RENDERER_TRACE;
-        // bbport BB_GUEST_IN_PLACE: no page protection; the pages are marked in the runtime's write
+        // wocport WOC_GUEST_IN_PLACE: no page protection; the pages are marked in the runtime's write
         // watch instead, and the writers that check it tell the GPU side (WriteTracking).
         if (!VideoCore::WriteTracking()) {
             runtime_memory_set_write_watch(address, size, !True(perms & Core::MemoryPermission::Write));
@@ -718,13 +718,13 @@ struct SignalImpl : public PageManager::Impl {
 
 PageManager::PageManager(Vulkan::Rasterizer* rasterizer_) {
 #ifdef __linux__
-    // bbport: dma-buf guest memory (BB_GUEST_GPU_MEMORY=1) cannot be write-protected by userfaultfd
+    // wocport: dma-buf guest memory (WOC_GUEST_GPU_MEMORY=1) cannot be write-protected by userfaultfd
     // (anonymous and shmem only): its registration would fail and writes go unseen.
-    const char* guest_gpu_memory = std::getenv("BB_GUEST_GPU_MEMORY");
+    const char* guest_gpu_memory = std::getenv("WOC_GUEST_GPU_MEMORY");
     const bool dma_buf_guest = guest_gpu_memory && guest_gpu_memory[0] == '1';
-    if (std::getenv("BB_UFFD") && std::getenv("BB_UFFD")[0] == '1' && dma_buf_guest) {
-        std::printf("GPU: userfaultfd off with BB_GUEST_GPU_MEMORY=1 (dma-buf memory)\n");
-    } else if (std::getenv("BB_UFFD") && std::getenv("BB_UFFD")[0] == '1') {
+    if (std::getenv("WOC_UFFD") && std::getenv("WOC_UFFD")[0] == '1' && dma_buf_guest) {
+        std::printf("GPU: userfaultfd off with WOC_GUEST_GPU_MEMORY=1 (dma-buf memory)\n");
+    } else if (std::getenv("WOC_UFFD") && std::getenv("WOC_UFFD")[0] == '1') {
         try {
             impl = std::make_unique<UffdImpl>(rasterizer_);
             LOG_INFO(Config, "Memory tracking method: userfaultfd");
@@ -751,7 +751,7 @@ void PageManager::OnGpuUnmap(VAddr address, size_t size) {
 template <bool track>
 void PageManager::UpdatePageWatchers(VAddr addr, u64 size) const {
     impl->UpdatePageWatchers<track, false>(addr, size);
-    // bbport: only the texture cache comes here (the buffer cache: UpdatePageWatchersForRegion).
+    // wocport: only the texture cache comes here (the buffer cache: UpdatePageWatchersForRegion).
     if (ImageTraps()) {
         impl->UpdateImageTraps<track>(addr, size);
     }

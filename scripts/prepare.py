@@ -143,7 +143,7 @@ def inspect_libc(path):
 
 
 class GameCheckError(Exception):
-    """Game files bbport does not run (game_check.py)."""
+    """Game files wocport does not run (game_check.py)."""
 
 
 def prepare(game, out):
@@ -236,7 +236,7 @@ def prepare(game, out):
     out.mkdir(parents=True, exist_ok=True)
     # A deliberately small format, consumed by probe.c; no host struct packing.
     with (out / 'boot.bin').open('wb') as f:
-        f.write(struct.pack('<8sQQQQQQ', b'BBPROBE2', size, header[4], len(loads), len(relocs), len(names),
+        f.write(struct.pack('<8sQQQQQQ', b'WOCPROB2', size, header[4], len(loads), len(relocs), len(names),
                             int(libc_evidence['init_env_is_ret'])))
         for p in loads:
             f.write(struct.pack('<QQQ', p['vaddr'], p['memsz'], p['flags']))
@@ -286,6 +286,6 @@ if __name__ == '__main__':
     try:
         prepare(args.game, args.out)
     except GameCheckError as error:
-        parser.exit(2, f'\nUnsupported game files: {error}\nSet BB_SKIP_GAME_CHECK=1 to start anyway.\n')
+        parser.exit(2, f'\nUnsupported game files: {error}\nSet WOC_SKIP_GAME_CHECK=1 to start anyway.\n')
     except (ValueError, OSError, StopIteration, KeyError, IndexError) as error:
         parser.exit(1, f'prepare failed: {error}\n')

@@ -207,7 +207,7 @@ public:
         return !None();
     }
 
-    /// bbport: every bit in [start, end) set.
+    /// wocport: every bit in [start, end) set.
     inline constexpr bool AllInRange(size_t start, size_t end) const {
         const size_t first_word = start / BITS_PER_WORD;
         const size_t last_word = (end - 1) / BITS_PER_WORD;

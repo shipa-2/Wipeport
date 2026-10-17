@@ -56,7 +56,7 @@ class GameCheckTests(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        os.environ.pop('BB_SKIP_GAME_CHECK', None)
+        os.environ.pop('WOC_SKIP_GAME_CHECK', None)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -108,7 +108,7 @@ class GameCheckTests(unittest.TestCase):
         self.assertIs(games.game_for(Path(self.tmp.name) / 'nothing'), games.DEFAULT)
 
     def test_skip_switch(self):
-        os.environ['BB_SKIP_GAME_CHECK'] = '1'
+        os.environ['WOC_SKIP_GAME_CHECK'] = '1'
         self.assertIsNone(game_check.problem(self.game('CUSA05670', '01.00')))
 
     def test_every_problem_is_explained(self):

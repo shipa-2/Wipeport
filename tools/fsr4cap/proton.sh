@@ -115,10 +115,10 @@ failure_reason() {
 # <dir>/pfx-<Proton>); otherwise
 # (the AppImage: umu is not bundled) Proton runs in the Steam container runtime it asks for
 # (toolmanifest.vdf: require_tool_appid; Steam installs it with the first game run with this
-# Proton), prefix <dir>/compat-<Proton>/pfx. BB_FSR4CAP_RUNNER=steam: the latter even with umu-run.
+# Proton), prefix <dir>/compat-<Proton>/pfx. WOC_FSR4CAP_RUNNER=steam: the latter even with umu-run.
 # When the container cannot start (no user namespaces, see container_failed), Proton runs directly
 # on the host, without a container runtime, from then on (marker <dir>/.direct);
-# BB_FSR4CAP_RUNNER=direct: that from the start.
+# WOC_FSR4CAP_RUNNER=direct: that from the start.
 fsr4cap_run() (
     local R=$1
     shift
@@ -129,10 +129,10 @@ fsr4cap_run() (
     local name=${PROTONPATH##*/}
     name=${name// /_}
     local direct=0 status=0
-    if [[ ${BB_FSR4CAP_RUNNER:-} == direct || -e $R/.direct ]]; then
+    if [[ ${WOC_FSR4CAP_RUNNER:-} == direct || -e $R/.direct ]]; then
         direct=1
     fi
-    if [[ $direct == 0 && ${BB_FSR4CAP_RUNNER:-} != steam ]] && command -v umu-run >/dev/null; then
+    if [[ $direct == 0 && ${WOC_FSR4CAP_RUNNER:-} != steam ]] && command -v umu-run >/dev/null; then
         WINEPREFIX=$R/pfx-$name GAMEID=umu-fsr4cap umu-run "$R/fsr4cap.exe" "$@" > "$R/umu.log" 2>&1 ||
             status=$?
         container_failed "$R/umu.log" || return "$status"

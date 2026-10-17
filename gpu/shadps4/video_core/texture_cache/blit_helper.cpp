@@ -100,7 +100,7 @@ void BlitHelper::ReinterpretColorAsMsDepth(u32 width, u32 height, u32 num_sample
     state.depth_stencil_attachment.depth_clear = true;
     scheduler.BeginRendering(state);
 
-    // bbport: recorded in order with the other commands (Scheduler::Record): written straight
+    // wocport: recorded in order with the other commands (Scheduler::Record): written straight
     // into the command buffer, with threaded recording the draw went in before the queued
     // BeginRendering, outside any render pass (WipEout swaps MSAA backings every frame).
     const MsPipelineKey key{num_samples, dst_pixel_format, false};
@@ -203,7 +203,7 @@ void BlitHelper::CopyBetweenMsImages(u32 width, u32 height, u32 num_samples,
     state.color_attachments[0].is_clear = true;
     scheduler.BeginRendering(state);
 
-    // bbport: recorded in order with the other commands (Scheduler::Record): written straight
+    // wocport: recorded in order with the other commands (Scheduler::Record): written straight
     // into the command buffer, with threaded recording the draw went in before the queued
     // BeginRendering, outside any render pass (WipEout swaps MSAA backings every frame).
     const MsPipelineKey key{num_samples, pixel_format, src_msaa};

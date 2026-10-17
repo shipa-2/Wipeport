@@ -126,7 +126,7 @@ GraphicsPipeline::GraphicsPipeline(
                 key.num_samples, instance.GetColorSampleCounts() & instance.GetDepthSampleCounts()),
             .sampleShadingEnable =
                 fs_info.addr_flags.persp_sample_ena || fs_info.addr_flags.linear_sample_ena,
-            // bbport: DB_ALPHA_TO_MASK (alpha to coverage), unimplemented before.
+            // wocport: DB_ALPHA_TO_MASK (alpha to coverage), unimplemented before.
             .alphaToCoverageEnable = key.alpha_to_coverage != 0,
         };
     }
@@ -426,7 +426,7 @@ GraphicsPipeline::GraphicsPipeline(
     auto [pipeline_result, pipe] =
         device.createGraphicsPipelineUnique(pipeline_cache, pipeline_info);
     if (preloading && pipeline_result != vk::Result::eSuccess) {
-        // bbport: a pipeline from the cache the driver rejects is a damaged cache entry: the
+        // wocport: a pipeline from the cache the driver rejects is a damaged cache entry: the
         // cache is rebuilt (PipelineCache::WarmUp) instead of stopping the game at every start.
         throw Serialization::CorruptData{"cached graphics pipeline rejected by the driver: " +
                                          vk::to_string(pipeline_result)};

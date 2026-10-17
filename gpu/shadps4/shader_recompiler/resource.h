@@ -106,7 +106,7 @@ struct BufferResource {
 };
 using BufferResourceList = boost::container::static_vector<BufferResource, NUM_BUFFERS>;
 
-/// bbport BB_LAYER_MEMORY: a guest buffer of 64 MiB or more (a shader given nearly all memory as
+/// wocport WOC_LAYER_MEMORY: a guest buffer of 64 MiB or more (a shader given nearly all memory as
 /// one buffer) is reached through the page table, not as one bound range: the game's memory is
 /// in several buffers (its chunks, VRAM mirrors). docs/MEMORY_MODULE_PLAN.ru.md.
 constexpr u64 PagedBufferMinSize = u64{64} << 20;
@@ -127,7 +127,7 @@ struct ImageResource {
     bool is_array{};
     bool is_written{};
     bool is_r128{};
-    /// bbport: read other than by normalized sampling without offsets (texel loads, size
+    /// wocport: read other than by normalized sampling without offsets (texel loads, size
     /// queries, offsets): needs the native-size image, not a reduced scene proxy.
     bool needs_native{};
     u8 constant_mip_index{};
@@ -233,7 +233,7 @@ struct PushData {
     float yscale;
     std::array<u32, NUM_USER_DATA_REGS> ud_regs;
     std::array<u8, NUM_BUFFERS> buf_offsets;
-    u32 motion_param; ///< bbport: object motion parameter index (0: off)
+    u32 motion_param; ///< wocport: object motion parameter index (0: off)
     u32 scene_size; ///< reduced width | height << 16; zero means native pixel coordinates
 
     void AddOffset(u32 binding, u32 offset) {

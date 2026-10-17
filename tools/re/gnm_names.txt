@@ -1,5 +1,5 @@
 # Names of the eboot's libGnm functions (CUSA03173 1.09), from the registers/packets they write and
-# their arguments (BB_GNM_TRACE). "?" marks a guess. Format: offset name
+# their arguments (WOC_GNM_TRACE). "?" marks a guess. Format: offset name
 # sce::Gnm::DrawCommandBuffer
 0x1072ed0 dcb.setScratchSize
 0x1072fd0 dcb.setRenderTargetMask

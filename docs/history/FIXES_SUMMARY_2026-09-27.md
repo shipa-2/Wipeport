@@ -3,7 +3,7 @@
 ## ✅ Что сделано
 
 ### 1. 🔧 Исправлена маска реактивности
-- Параметр `debug_view` теперь сохраняется в `bbport.ini`
+- Параметр `debug_view` теперь сохраняется в `wocport.ini`
 - Маска отображается после перезапуска
 
 ### 2. 🚀 ДИНАМИЧЕСКОЕ ПЕРЕКЛЮЧЕНИЕ ПРЕСЕТОВ на RX 7800 XT
@@ -106,16 +106,16 @@ else {
 ```
 
 ### Убрана блокировка
-Удалена проверка `std::getenv("BB_LIVE_SCALING_UNSUPPORTED")` — теперь динамическое масштабирование работает на ВСЕХ GPU.
+Удалена проверка `std::getenv("WOC_LIVE_SCALING_UNSUPPORTED")` — теперь динамическое масштабирование работает на ВСЕХ GPU.
 
 ---
 
 ## 📝 Изменённые файлы
 
-- `gpu/shim/bbport_settings.cpp` — сохранение `debug_view`
+- `gpu/shim/wocport_settings.cpp` — сохранение `debug_view`
 - `gpu/shadps4/video_core/renderer_vulkan/vk_temporal_upscaler.cpp` — fallback UI depth, убрана блокировка
-- `gpu/shim/bbport_overlay.cpp` — обновлено меню
-- `bbport.ini` — правильная конфигурация
+- `gpu/shim/wocport_overlay.cpp` — обновлено меню
+- `wocport.ini` — правильная конфигурация
 - `CHANGELOG.md` — описание изменений
 - `start_fixed.sh` — скрипт быстрого запуска
 

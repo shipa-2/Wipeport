@@ -1,6 +1,6 @@
 **English** · [Русский](#русский)
 
-bbport is the counterpart of Wine + DXVK for a single game: Bloodborne (v1.09) on Linux.
+wocport is the counterpart of Wine + DXVK for a single game: Bloodborne (v1.09) on Linux.
 Changes since [0.5](https://github.com/deadinside28/bloodborne_pc/releases/tag/0.5); details and
 measurements: [CHANGES_after_0.5.md](https://github.com/deadinside28/bloodborne_pc/blob/master/docs/CHANGES_after_0.5.md) (Russian).
 
@@ -8,12 +8,12 @@ Questions about this project: Discord https://discord.gg/KYZRKk9CB — not the s
 
 ### New
 
-- **Online play (shadNet)**, as a separate module (`libbbnet.so`, loaded only when online play is
+- **Online play (shadNet)**, as a separate module (`libwocnet.so`, loaded only when online play is
   on): messages, bloodstains and ghosts from The Hunter's Dream, bells and summons through a
   shadNet server (`srv.shadps4.net:31313` by default) with a shadNet account. Launcher → *Online*:
   servers, account, UPnP, connection test. The router port is opened by UPnP (#121). The same
   servers as the Windows port. The network and PSN libraries come from shadp2p (a shadPS4 fork,
-  GPL-2.0) by way of the Linux and Windows forks of bbport.
+  GPL-2.0) by way of the Linux and Windows forks of wocport.
 - **Mouse look**: click into the game to take the mouse, F1 releases it; mouse buttons and the
   wheel can be bound like keys (Mouse Left = R1, Mouse Right = L2, Middle = R3, side buttons
   R2/L1, wheel = quick items). Launcher → *Controls*: mouse look, sensitivity, invert Y (#51, #52).
@@ -38,7 +38,7 @@ Questions about this project: Discord https://discord.gg/KYZRKk9CB — not the s
   certificates).
 - NVIDIA on Wayland: the swapchain is recreated through `oldSwapchain` (PR #93).
 - Building from git after updating from 0.4: "patch failed: src/ffx_vk_fsr4_v07.c" (#124).
-- `bb-launcher.sh --play` through nix-shell (PR #120); FSR 4.1.1 recording from the AppImage on
+- `woc-launcher.sh --play` through nix-shell (PR #120); FSR 4.1.1 recording from the AppImage on
   SteamOS (PR #89).
 
 ### Smaller download
@@ -56,7 +56,7 @@ accompanies the download.
 
 ## Русский
 
-bbport — аналог Wine + DXVK для одной игры: Bloodborne (v1.09) на Linux. Изменения после
+wocport — аналог Wine + DXVK для одной игры: Bloodborne (v1.09) на Linux. Изменения после
 [0.5](https://github.com/deadinside28/bloodborne_pc/releases/tag/0.5); подробности и замеры —
 [CHANGES_after_0.5.md](https://github.com/deadinside28/bloodborne_pc/blob/master/docs/CHANGES_after_0.5.md).
 
@@ -64,12 +64,12 @@ bbport — аналог Wine + DXVK для одной игры: Bloodborne (v1.0
 
 ### Новое
 
-- **Игра по сети (shadNet)** — отдельным модулем (`libbbnet.so`, загружается, только когда онлайн
+- **Игра по сети (shadNet)** — отдельным модулем (`libwocnet.so`, загружается, только когда онлайн
   включён): сообщения, пятна крови и призраки — с The Hunter's Dream, колокола и призывы — через
   сервер shadNet (по умолчанию `srv.shadps4.net:31313`) с учётной записью shadNet. Лаунчер →
   *Онлайн*: серверы, учётная запись, UPnP, проверка соединения. Порт на роутере открывается по UPnP
   (#121). Серверы те же, что у Windows-версии. Сетевые и PSN-библиотеки — из shadp2p (форк shadPS4,
-  GPL-2.0), через Linux- и Windows-форки bbport.
+  GPL-2.0), через Linux- и Windows-форки wocport.
 - **Камера мышью**: щелчок в окне игры захватывает мышь, F1 — отпускает; кнопки мыши и колесо
   назначаются как клавиши (левая — R1, правая — L2, средняя — R3, боковые — R2/L1, колесо —
   быстрые предметы). Лаунчер → *Управление*: камера мышью, чувствительность, инверсия (#51, #52).
@@ -94,7 +94,7 @@ bbport — аналог Wine + DXVK для одной игры: Bloodborne (v1.0
   HTTPS).
 - NVIDIA на Wayland: swapchain пересоздаётся через `oldSwapchain` (PR #93).
 - Сборка из git после обновления с 0.4: «patch failed: src/ffx_vk_fsr4_v07.c» (#124).
-- `bb-launcher.sh --play` через nix-shell (PR #120); запись FSR 4.1.1 из AppImage на SteamOS (PR #89).
+- `woc-launcher.sh --play` через nix-shell (PR #120); запись FSR 4.1.1 из AppImage на SteamOS (PR #89).
 
 ### Меньше скачивать
 

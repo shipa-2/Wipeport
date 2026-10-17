@@ -4,13 +4,13 @@
 cd -- "$(dirname -- "$0")/.."
 secs=${1:?usage: tools/soak_walk.sh SECS [ENV=VALUE...]}
 shift
-env BB_GAME_DIR="${BB_GAME_DIR:-$PWD/../game_files/CUSA03173}" "$@" tools/restart.sh > /dev/null || exit 1
+env WOC_GAME_DIR="${WOC_GAME_DIR:-$PWD/../game_files/CUSA03173}" "$@" tools/restart.sh > /dev/null || exit 1
 end=$((SECONDS + secs))
 status=alive
 while ((SECONDS < end)); do
     tools/press.sh "ly=0" 3; tools/press.sh "rx=40" 1.5; tools/press.sh "ly=0" 3
     tools/press.sh "ly=255" 3; tools/press.sh "rx=215" 1.5; sleep 1
-    if ! pgrep -x bb-probe > /dev/null; then status="DIED after $SECONDS s"; break; fi
+    if ! pgrep -x woc-probe > /dev/null; then status="DIED after $SECONDS s"; break; fi
 done
 tools/stop_own.sh
 log=out/soak_walk_$(date +%m%d_%H%M%S).log

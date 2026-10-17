@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright 2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
-// bbport: AstroQuest's VrExporter, the local (OpenXR) path only (see the header).
+// wocport: AstroQuest's VrExporter, the local (OpenXR) path only (see the header).
 
 #include <algorithm>
 

@@ -5,8 +5,8 @@
 следующем запуске. Нижний включённый мод имеет больший приоритет; при совпадении
 файлов в журнале выводится, какой мод заменил предыдущий.
 
-По умолчанию используется `bbport/mods/`, а в AppImage —
-`~/.local/share/bbport/mods/`. Распакуйте скачанный мод так:
+По умолчанию используется `wocport/mods/`, а в AppImage —
+`~/.local/share/wocport/mods/`. Распакуйте скачанный мод так:
 
 ```text
 mods/
@@ -54,15 +54,15 @@ mods/
 
 Моды с заменой `eboot.bin`, `sce_module` или `sce_sys`, инжекторы DLL и скриптовые
 плагины этим загрузчиком не поддерживаются. Патчи исполняемого кода остаются
-в существующей системе `patches/` / `BB_PATCHES`. Символьные ссылки внутри мода
+в существующей системе `patches/` / `WOC_PATCHES`. Символьные ссылки внутри мода
 не принимаются. Совместимость конкретного мода с CUSA03173 1.09 определяется
 его автором.
 
 Для запуска из терминала:
 
 ```sh
-BB_GAME_DIR=/path/to/CUSA03173 BB_MODS_DIR=/path/to/mods bash run.sh
-BB_GAME_DIR=/path/to/CUSA03173 BB_MODS_ENABLED=0 bash run.sh
+WOC_GAME_DIR=/path/to/CUSA03173 WOC_MODS_DIR=/path/to/mods bash run.sh
+WOC_GAME_DIR=/path/to/CUSA03173 WOC_MODS_ENABLED=0 bash run.sh
 ```
 
 Порядок и отключения сохраняются в каталоге данных `mods.json`:
@@ -72,12 +72,12 @@ BB_GAME_DIR=/path/to/CUSA03173 BB_MODS_ENABLED=0 bash run.sh
 ```
 
 Новые папки включаются автоматически и добавляются в конец по алфавиту.
-`BB_MODS_CONFIG` меняет путь профиля. `BB_MOD_TRACE=1` с `BB_MODS_DIR` выводит
+`WOC_MODS_CONFIG` меняет путь профиля. `WOC_MOD_TRACE=1` с `WOC_MODS_DIR` выводит
 первые чтения реально подключённых файлов для диагностики.
 
 # Сторонние патчи (XML shadPS4)
 
-Папка `patches/` в каталоге данных (в AppImage — `~/.local/share/bbport/patches/`, в лаунчере
+Папка `patches/` в каталоге данных (в AppImage — `~/.local/share/wocport/patches/`, в лаунчере
 группа **Сторонние патчи**, там же можно выбрать другую папку). Подходят XML-файлы патчей в
 формате shadPS4/GoldHEN: берутся `Metadata` для `AppVer="01.09"` и `eboot.bin`, файлы с
 `TitleID` других игр пропускаются. Включение по умолчанию — из `isEnabled` файла, выбор в
@@ -91,7 +91,7 @@ BB_GAME_DIR=/path/to/CUSA03173 BB_MODS_ENABLED=0 bash run.sh
 Патч со строками `mask` (поиск по шаблону) или с адресом вне eboot пропускается целиком,
 с сообщением в журнале. Сторонние патчи применяются после встроенных
 (`patches/Bloodborne.xml`): при пересечении побеждает сторонний. Из терминала:
-`BB_PATCHES_DIR=/путь BB_PATCHES_CONFIG=/путь/patches.json bash run.sh`.
+`WOC_PATCHES_DIR=/путь WOC_PATCHES_CONFIG=/путь/patches.json bash run.sh`.
 
 Патчи, которые заменяют указатели в таблицах (как `60 FPS++` и `90 FPS++`), загрузчик
 переносит на реальный адрес образа. Раньше такие патчи останавливали запуск ошибкой

@@ -29,7 +29,7 @@ struct BufferSpecialization {
     u32 num_format : 4;
     u32 index_stride : 2;
     u32 element_size : 2;
-    u32 paged : 1; ///< bbport BB_LAYER_MEMORY: through the page table (IsPagedBuffer)
+    u32 paged : 1; ///< wocport WOC_LAYER_MEMORY: through the page table (IsPagedBuffer)
     AmdGpu::CompMapping dst_select{};
     AmdGpu::NumberConversion num_conversion{};
 

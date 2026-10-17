@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# tools/shot.sh FILE.png: captures only the game window (bb-probe) with grim, by its Hyprland
+# tools/shot.sh FILE.png: captures only the game window (woc-probe) with grim, by its Hyprland
 # geometry (hyprctl clients: at, size, pid per window block).
-pid=$(pgrep -x bb-probe | head -1)
+pid=$(pgrep -x woc-probe | head -1)
 [[ -n $pid ]] || { echo "no game"; exit 1; }
 geo=$(hyprctl clients | awk -v pid="$pid" '
     /^Window / { at=""; size="" }

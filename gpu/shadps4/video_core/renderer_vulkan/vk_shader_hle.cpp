@@ -10,19 +10,19 @@
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/host_shaders/buffer_multi_copy_comp.h"
 #include "game_profile.h"
-#include "bbport_toggles.h"
+#include "wocport_toggles.h"
 #include "video_core/renderer_vulkan/vk_gpu_profiler.h"
 
 extern std::unique_ptr<AmdGpu::Liverpool> liverpool;
 
 namespace Vulkan {
 
-// bbport: the copy shader runs ~57 times per frame with ~1024 small ranges each. As one
+// wocport: the copy shader runs ~57 times per frame with ~1024 small ranges each. As one
 // vkCmdCopyBuffer with that many regions it cost ~37 ns of GPU time per range (~2.1 ms per
 // frame) plus the recording; buffer_multi_copy.comp copies all ranges in one dispatch.
 static bool MultiCopy(Rasterizer& rasterizer, const VideoCore::Buffer* src,
                       const VideoCore::Buffer* dst, std::span<const vk::BufferCopy> copies) {
-    if (copies.size() < 8 || BbToggle::Disabled(BbToggle::MultiCopyShader)) {
+    if (copies.size() < 8 || WocToggle::Disabled(WocToggle::MultiCopyShader)) {
         return false;
     }
     u64 src_min = ~0ull, src_max = 0, dst_min = ~0ull, dst_max = 0;
@@ -158,8 +158,8 @@ static bool ExecuteCopyShaderHLE(const Shader::Info& info, const AmdGpu::Compute
     static std::vector<vk::BufferCopy> copies;
     copies.clear();
     copies.reserve(cs_program.dim_x);
-    // bbport BB_COPY_SHADER_TRACE=1 (diagnostics): the copy shader's buffers, every 2 s.
-    static const bool trace = std::getenv("BB_COPY_SHADER_TRACE") != nullptr;
+    // wocport WOC_COPY_SHADER_TRACE=1 (diagnostics): the copy shader's buffers, every 2 s.
+    static const bool trace = std::getenv("WOC_COPY_SHADER_TRACE") != nullptr;
     if (trace) {
         static auto last = std::chrono::steady_clock::now();
         static u32 calls = 0;
@@ -197,12 +197,12 @@ static bool ExecuteCopyShaderHLE(const Shader::Info& info, const AmdGpu::Compute
         copies.emplace_back(local_src_offset, local_dst_offset, local_size);
     }
 
-    // bbport: 64 KiB instead of 64 MiB. The copies are a few KiB spread over up to 57 MiB, and
+    // wocport: 64 KiB instead of 64 MiB. The copies are a few KiB spread over up to 57 MiB, and
     // each batch synchronizes (uploads, marks GPU-modified) its whole range: GPU time of the copy
     // shader 1.5 -> 0.6 ms/frame, GPU busy 85% -> 77%, frame rate no lower.
-    // BB_COPY_MERGE_KB overrides it.
+    // WOC_COPY_MERGE_KB overrides it.
     static const vk::DeviceSize MaxDistanceForMerge = [] {
-        const char* env = std::getenv("BB_COPY_MERGE_KB");
+        const char* env = std::getenv("WOC_COPY_MERGE_KB");
         return env ? vk::DeviceSize(std::strtoull(env, nullptr, 10)) * 1024 : vk::DeviceSize(64_KB);
     }();
     u32 batch_start = 0;
@@ -268,23 +268,23 @@ bool ExecuteShaderHLE(const Shader::Info& info, const AmdGpu::Regs& regs,
     // The game's buffer copy shader, from its profile (games/); nothing else is replaced.
     const u64 copy_shader = Game::BufferCopyShader();
     if (copy_shader != 0 && info.pgm_hash == copy_shader) {
-        // bbport: with the game's memory in place the game's shader runs (translated), reading its
-        // copy list when the GPU executes it. BB_COPY_SHADER_NATIVE=0: the list read on the CPU
+        // wocport: with the game's memory in place the game's shader runs (translated), reading its
+        // copy list when the GPU executes it. WOC_COPY_SHADER_NATIVE=0: the list read on the CPU
         // when the dispatch is recorded, copies of our own (before). Experiment bit 2 inverts it
         // while the game runs. The layer's paged stores now write through to guest memory while
         // keeping the current mirrors in sync, so the original shader is the default here too.
         static const bool native_env = [copy_shader] {
-            const char* env = std::getenv("BB_COPY_SHADER_NATIVE");
+            const char* env = std::getenv("WOC_COPY_SHADER_NATIVE");
             const bool native = !env || env[0] != '0';
-            const bool translated = VideoCore::GuestInPlace() && native != BbToggle::Experiment(2);
-            std::printf("GPU: buffer copy shader %llx: %s%s (BB_COPY_SHADER_NATIVE=0: HLE)\n",
+            const bool translated = VideoCore::GuestInPlace() && native != WocToggle::Experiment(2);
+            std::printf("GPU: buffer copy shader %llx: %s%s (WOC_COPY_SHADER_NATIVE=0: HLE)\n",
                         (unsigned long long)copy_shader,
                         translated ? "original translated shader" : "HLE",
                         translated && VideoCore::BufferCache::LayerPagedActive()
                             ? ", paged writes through to guest memory" : "");
             return native;
         }();
-        if (VideoCore::GuestInPlace() && native_env != BbToggle::Experiment(2)) {
+        if (VideoCore::GuestInPlace() && native_env != WocToggle::Experiment(2)) {
             return false;
         }
         // Its destinations stay in the game's memory, as when it runs as itself (see

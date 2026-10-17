@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "video_core/renderer_vulkan/vk_fsr4.h"
-#include "bbport_toggles.h"
+#include "wocport_toggles.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -13,7 +13,7 @@
 
 #include "ffx_vk_fsr4_v07.h"
 #include "ffx_vk_fsr4_v07_assets.h"
-#include "bbport_settings.h"
+#include "wocport_settings.h"
 #include "video_core/renderer_vulkan/fsr411/fsr411.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
@@ -23,7 +23,7 @@ namespace Vulkan {
 namespace {
 
 std::string AssetDir() {
-    const char* dir = std::getenv("BB_FSR4_DIR");
+    const char* dir = std::getenv("WOC_FSR4_DIR");
     return dir && dir[0] ? dir : "fsr4_shaders";
 }
 
@@ -68,7 +68,7 @@ struct Fsr4Upscaler::Impl {
     bool fatal = false;
     u64 next_frame_id = 1;
     std::deque<std::pair<u64, u64>> in_flight; ///< provider frame id, scheduler tick
-    // bbport: FSR 4.1.1 (upscaler=fsr411): the replay of AMD's 4.1.1 DLL (fsr411/).
+    // wocport: FSR 4.1.1 (upscaler=fsr411): the replay of AMD's 4.1.1 DLL (fsr411/).
     std::unique_ptr<Fsr411::Upscaler> fsr411;
     std::deque<u64> fsr411_ticks; ///< scheduler ticks of its recent frames (constant ring)
     std::string fsr411_described;
@@ -122,9 +122,9 @@ struct Fsr4Upscaler::Impl {
         const std::string dir = AssetDir() + "/";
         std::array<std::vector<u8>, FFX_FSR4_VK_PASS_COUNT> code;
         std::vector<u8> initializer, weights;
-        // bbport: tools/fsr4_optimize.sh puts fixed or faster passes into opt/ (post through
-        // shared memory, pass 11 without out-of-bounds writes); BB_FSR4_OPT=0 keeps the originals.
-        const char* opt_env = std::getenv("BB_FSR4_OPT");
+        // wocport: tools/fsr4_optimize.sh puts fixed or faster passes into opt/ (post through
+        // shared memory, pass 11 without out-of-bounds writes); WOC_FSR4_OPT=0 keeps the originals.
+        const char* opt_env = std::getenv("WOC_FSR4_OPT");
         const bool use_opt = !(opt_env && opt_env[0] == '0');
         u32 optimized = 0;
         const auto load = [&](const char* name, std::vector<u8>& data) {
@@ -239,7 +239,7 @@ struct Fsr4Upscaler::Impl {
             return false;
         }
         if (!fsr411) {
-            const char* env = std::getenv("BB_FSR411_DIR");
+            const char* env = std::getenv("WOC_FSR411_DIR");
             const Fsr411::Features features{.fp8_matrices = instance.IsFsr411Fp8Supported(),
                                             .fp16_matrices = instance.IsFsr411MatrixSupported()};
             fsr411 = std::make_unique<Fsr411::Upscaler>(instance.GetPhysicalDevice(), instance.GetDevice(),
@@ -261,7 +261,7 @@ struct Fsr4Upscaler::Impl {
         g.ultra_performance = f.preset >= 4;
         g.jitter[0] = f.jitter[0];
         g.jitter[1] = f.jitter[1];
-        g.motion_scale[1] = BbToggle::Disabled(BbToggle::Fsr4MotionYFlip) ? -1.0f : 1.0f;
+        g.motion_scale[1] = WocToggle::Disabled(WocToggle::Fsr4MotionYFlip) ? -1.0f : 1.0f;
         g.sharpness = f.sharpness;
         g.sharpen = f.sharpen && f.sharpness > 0.0f;
         g.reset = f.reset;
@@ -281,7 +281,7 @@ struct Fsr4Upscaler::Impl {
     }
 
     bool Record(const Frame& f) {
-        if (BbSettings::Get().upscaler == BbSettings::UpscalerFsr411) {
+        if (WocSettings::Get().upscaler == WocSettings::UpscalerFsr411) {
             return Record411(f);
         }
         if (fatal) {
@@ -312,7 +312,7 @@ struct Fsr4Upscaler::Impl {
             Fail("no free provider frame (" + std::to_string(int(begin)) + ")", false);
             return false;
         }
-        // bbport: a frame begun here must reach RetireFrame even when it records nothing,
+        // wocport: a frame begun here must reach RetireFrame even when it records nothing,
         // or every later BeginFrame fails (VK_ERROR_VALIDATION_FAILED_EXT).
         const auto abandon = [&] { in_flight.emplace_back(frame_id, scheduler.CurrentTick()); };
         constexpr VkAccessFlags read = VK_ACCESS_SHADER_READ_BIT;
@@ -359,7 +359,7 @@ struct Fsr4Upscaler::Impl {
         d.jitterOffset = {f.jitter[0], f.jitter[1]};
         // Vectors are in render pixels; the provider divides by the render size.
         d.motionVectorScale = {1.0f,
-                               BbToggle::Disabled(BbToggle::Fsr4MotionYFlip) ? -1.0f : 1.0f};
+                               WocToggle::Disabled(WocToggle::Fsr4MotionYFlip) ? -1.0f : 1.0f};
         d.renderSize = {f.render_width, f.render_height};
         d.upscaleSize = {f.output.width, f.output.height};
         d.enableSharpening = f.sharpen && f.sharpness > 0.0f;

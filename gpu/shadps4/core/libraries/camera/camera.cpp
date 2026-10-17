@@ -4,7 +4,7 @@
 #include "common/elf_info.h"
 #include "common/logging/log.h"
 #include "core/emulator_settings.h"
-// bbport: AstroQuest's guest frame counter (core/guest_cpu) feeds its virtual (headset) camera
+// wocport: AstroQuest's guest frame counter (core/guest_cpu) feeds its virtual (headset) camera
 // only, which needs a headset (shim/core/vr/vr_runtime.h): not ported.
 namespace Core::GuestCpu {
 static u64 GuestFrameCount() {
@@ -879,7 +879,7 @@ s32 PS4_SYSV_ABI sceCameraSetConfig(s32 handle, OrbisCameraConfig* config) {
         output_config1 = camera_config_types[config->configType - 1][1];
         break;
     case ORBIS_CAMERA_CONFIG_TYPE5:
-        // bbport: the executable's SDK version (bbgpu.cpp FillElfInfo).
+        // wocport: the executable's SDK version (wocgpu.cpp FillElfInfo).
         u32 sdk_ver;
         sdk_ver = Common::ElfInfo::Instance().CompiledSdkVer();
         if (sdk_ver < Common::ElfInfo::FW_450) {
@@ -1282,7 +1282,7 @@ s32 PS4_SYSV_ABI sceCameraStopByHandle(s32 handle) {
 }
 
 void RegisterLib(Core::Loader::SymbolsResolver* sym) {
-    // bbport: the executable's SDK version (bbgpu.cpp FillElfInfo).
+    // wocport: the executable's SDK version (wocgpu.cpp FillElfInfo).
     g_firmware_version = static_cast<s32>(Common::ElfInfo::Instance().CompiledSdkVer());
 
     LIB_FUNCTION("QhjrPkRPUZQ", "libSceCamera", 1, "libSceCamera", sceCameraAccGetData);

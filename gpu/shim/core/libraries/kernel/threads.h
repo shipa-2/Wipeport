@@ -1,4 +1,4 @@
-// bbport: host threads that may call guest code (AvPlayer allocator callbacks).
+// wocport: host threads that may call guest code (AvPlayer allocator callbacks).
 // Each thread gets a guest TCB (GS base, TLS) from the C runtime before running.
 #pragma once
 #include <functional>
@@ -15,7 +15,7 @@ public:
     ~Thread() { Stop(); }
     void Run(std::function<void(std::stop_token)>&& func) {
         thread = std::jthread([func = std::move(func)](std::stop_token stop) {
-            runtime_thread_attach_host("bb:hle");
+            runtime_thread_attach_host("woc:hle");
             func(stop);
         });
     }

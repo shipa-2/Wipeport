@@ -25,15 +25,15 @@ measurements: [NVIDIA_MEMORY_MODEL.ru.md](https://github.com/deadinside28/bloodb
 - **Fewer shader-compilation hitches.** A new graphics pipeline of a pass that draws into a
   render target used in each of the last 8 frames is compiled on worker threads while its draws
   go without it for a frame or two. Translating a new shader and compute pipelines still happen at once, and so
-  do passes rendered once and loading screens. `BB_ASYNC_PIPELINES=0` restores the old
-  behaviour, `BB_ASYNC_PIPELINE_THREADS=N` sets the worker count. The drivers' own shader caches
+  do passes rendered once and loading screens. `WOC_ASYNC_PIPELINES=0` restores the old
+  behaviour, `WOC_ASYNC_PIPELINE_THREADS=N` sets the worker count. The drivers' own shader caches
   are kept between sessions (NVIDIA: no cleanup, 10 GB; Mesa: 4 GB). As before, the first start
   of a new build compiles its pipeline cache again.
 - **4 GB cards: the new memory model no longer collapses to ~5 FPS.** 0.5-pre3 stopped copying
   the game's memory to VRAM short of the texture collector's critical mark; on a 4 GB card the
   textures alone held the usage there, so no copy was made again and everything was read over
   the bus after a few minutes. VRAM copies now have their own share (25 % of the driver's
-  budget, `BB_LAYER_MIRROR_FLOOR_PERCENT`) that the texture collector's mark does not take.
+  budget, `WOC_LAYER_MIRROR_FLOOR_PERCENT`) that the texture collector's mark does not take.
   Cards with 4 GB are still faster with the 0.3 memory model.
 - **No VRAM left behind after travelling.** Copies of an area left behind stayed in VRAM (large
   bindings over all memory marked every copy as in use), and the copies of the new area waited,
@@ -58,14 +58,14 @@ measurements: [NVIDIA_MEMORY_MODEL.ru.md](https://github.com/deadinside28/bloodb
   content is that of 0.5 (DLSS, debug views, current hints).
 
 **How to test:** enable *New memory and translation model* in the launcher, or set
-`BB_PC_MODEL=1`; the mode remains **off by default**. On AMD it uses the sparse arena;
-`BB_LAYER_MEMORY=1` forces NVIDIA's path there. Logs with `BB_FRAME_STATS=1` show compiles per 5 s,
+`WOC_PC_MODEL=1`; the mode remains **off by default**. On AMD it uses the sparse arena;
+`WOC_LAYER_MEMORY=1` forces NVIDIA's path there. Logs with `WOC_FRAME_STATS=1` show compiles per 5 s,
 a line `GPU: N pipelines compiled in the background, M draws went without theirs`, and for
 frames over 40 ms where the new model's VRAM copies spent their time (`layer memory ms`).
 
 **Validation and limits:** RX 7800 XT/RADV, a recorded 25 s route: AMD's default path p99
 5.2–6.0 ms; NVIDIA's path forced, before/after as above; no frames over 20 ms in either. A 4-minute
-session on NVIDIA's path with the VRAM budget limited to 4.5 GB (`BB_VRAM_LIMIT_MB=4608`): 177 FPS
+session on NVIDIA's path with the VRAM budget limited to 4.5 GB (`WOC_VRAM_LIMIT_MB=4608`): 177 FPS
 on average, p99 9.7 ms, VRAM at most 3.0 GB; 11 of the 12 frames over 40 ms were compiles or the
 loading screen. Runtime, unit (106) and GPU tests passed. NVIDIA's own path (the game's memory imported as
 host memory) cannot run on AMD: the gains there are not measured yet, logs from NVIDIA testers
@@ -95,14 +95,14 @@ are not bundled. `SHA256SUMS` accompanies the download.
   в цель рендера, использованную в каждом из последних 8 кадров, собирается в фоновых потоках, а
   его отрисовки кадр-другой идут без него. Перевод нового шейдера и compute-конвейеры
   по-прежнему компилируются сразу, как и разовые проходы и экраны загрузки.
-  `BB_ASYNC_PIPELINES=0` — как раньше, `BB_ASYNC_PIPELINE_THREADS=N` — число потоков. Дисковые
+  `WOC_ASYNC_PIPELINES=0` — как раньше, `WOC_ASYNC_PIPELINE_THREADS=N` — число потоков. Дисковые
   кэши шейдеров драйверов сохраняются между сессиями (NVIDIA — без очистки, 10 ГБ; Mesa — 4 ГБ).
   Как и раньше, при первом запуске новой сборки кэш конвейеров собирается заново.
 - **Карты на 4 ГБ: новая модель памяти больше не падает до ~5 FPS.** В 0.5-pre3 копии памяти
   игры в VRAM останавливались, не доходя до критической отметки сборщика текстур; на карте 4 ГБ
   одни текстуры держали память там, копии больше не создавались, и через несколько минут всё
   читалось через шину. Теперь у копий есть своя доля VRAM (25 % бюджета драйвера,
-  `BB_LAYER_MIRROR_FLOOR_PERCENT`), которую отметка сборщика текстур не забирает. На картах
+  `WOC_LAYER_MIRROR_FLOOR_PERCENT`), которую отметка сборщика текстур не забирает. На картах
   4 ГБ модель памяти 0.3 по-прежнему быстрее.
 - **После перемещений VRAM не остаётся занятой.** Копии покинутой локации оставались в VRAM
   (большие привязки на всю память помечали каждую копию как используемую), а копии новой ждали
@@ -129,15 +129,15 @@ are not bundled. `SHA256SUMS` accompanies the download.
   геймпадом. Содержимое — как в 0.5 (DLSS, отладочные виды, актуальные подсказки).
 
 **Как проверить:** включить *Новую модель памяти и трансляции* в лаунчере или задать
-`BB_PC_MODEL=1`; режим по-прежнему **выключен по умолчанию**. На AMD он работает через
-sparse-арену; `BB_LAYER_MEMORY=1` включает на AMD путь NVIDIA. В логе с `BB_FRAME_STATS=1` —
+`WOC_PC_MODEL=1`; режим по-прежнему **выключен по умолчанию**. На AMD он работает через
+sparse-арену; `WOC_LAYER_MEMORY=1` включает на AMD путь NVIDIA. В логе с `WOC_FRAME_STATS=1` —
 число компиляций за 5 с, строка `GPU: N pipelines compiled in the background, M draws went
 without theirs` и для кадров дольше 40 мс — на что ушло время копий новой модели в VRAM
 (`layer memory ms`).
 
 **Проверки и ограничения:** RX 7800 XT/RADV, записанный маршрут на 25 с: обычный путь AMD —
 p99 5,2–6,0 мс; путь NVIDIA, принудительно, — до и после, как выше; ни одного кадра дольше
-20 мс. Сессия на 4 минуты на пути NVIDIA с бюджетом VRAM 4,5 ГБ (`BB_VRAM_LIMIT_MB=4608`):
+20 мс. Сессия на 4 минуты на пути NVIDIA с бюджетом VRAM 4,5 ГБ (`WOC_VRAM_LIMIT_MB=4608`):
 в среднем 177 FPS, p99 9,7 мс, VRAM не больше 3,0 ГБ; 11 из 12 кадров дольше 40 мс — компиляция
 или экран загрузки. Тесты рантайма, юнит-тесты (106) и GPU-тесты пройдены. Собственный путь NVIDIA (память
 игры импортируется как память хоста) на AMD не запустить: выигрыш там ещё не измерен, логи от

@@ -18,17 +18,17 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
-/* sceKernelGetDirectMemorySize on retail PS4: 5056 MiB. BB_DMEM_MB raises it (the resolution
+/* sceKernelGetDirectMemorySize on retail PS4: 5056 MiB. WOC_DMEM_MB raises it (the resolution
  * patches above 1080p need about 4 GiB more; run.sh sets it). */
 static uint64_t pool_size_bytes(void) {
     static uint64_t size;
     if (!size) {
-        const char *env = getenv("BB_DMEM_MB");
+        const char *env = getenv("WOC_DMEM_MB");
         uint64_t mb = env ? strtoull(env, NULL, 10) : 0;
-        /* A PS4 Pro (BB_NEO=1) gives its titles 640 MiB more (shadPS4: 5888 against 5248 MiB in
+        /* A PS4 Pro (WOC_NEO=1) gives its titles 640 MiB more (shadPS4: 5888 against 5248 MiB in
          * all); Wipeout's Pro mode needs them (a probe for what is left fails, then frees a direct
          * mapping with free()). */
-        const char *neo = getenv("BB_NEO");
+        const char *neo = getenv("WOC_NEO");
         const uint64_t floor_mb = neo && !strcmp(neo, "1") ? 5696 : 5056;
         if (mb < floor_mb || mb > 16384) mb = floor_mb;
         size = mb * 1024 * 1024;
@@ -78,8 +78,8 @@ static void read_unlock(void) { if (!exclusive_depth) pthread_rwlock_unlock(&loc
 static Block blocks[LIMIT];
 static Vma *vmas; static size_t vma_count, vma_capacity;
 static int pool_fd=-1;
-/* bbport: direct memory in GPU-visible system memory the GPU library allocates (dma-buf chunks,
- * BB_GUEST_GPU_MEMORY=1): the GPU reads the game's data in place instead of the CPU copying it
+/* wocport: direct memory in GPU-visible system memory the GPU library allocates (dma-buf chunks,
+ * WOC_GUEST_GPU_MEMORY=1): the GPU reads the game's data in place instead of the CPU copying it
  * into staging buffers first. Chunks are allocated when the game allocates direct memory in them;
  * a chunk the GPU library cannot provide stays in the memfd. */
 #define CHUNK (UINT64_C(256) << 20)
@@ -122,10 +122,10 @@ static void add_region(uint64_t phys, uint64_t size) {
 }
 #define FLEX_SPAN (UINT64_C(1024) * 1024 * 1024)
 static uint64_t flex_bitmap[FLEX_SPAN/PAGE/64];
-/* GPU hooks (bbgpu): notified outside the lock, in order, after each operation. */
+/* GPU hooks (wocgpu): notified outside the lock, in order, after each operation. */
 typedef void (*GpuRange)(uintptr_t address, uint64_t size);
 static GpuRange hook_map, hook_unmap, hook_invalidate;
-static GpuRange hook_note_write; /* bbport: data written into GPU memory (runtime_memory_note_write) */
+static GpuRange hook_note_write; /* wocport: data written into GPU memory (runtime_memory_note_write) */
 enum { HOOK_MAP, HOOK_UNMAP, HOOK_INVALIDATE };
 typedef struct { int kind; uintptr_t address; uint64_t size; } PendingHook;
 static PendingHook pending[64]; static size_t pending_count;
@@ -141,7 +141,7 @@ static int host_prot(int prot) {
 /* Direct memory occupies [0,POOL_SIZE) of the memfd, flexible memory [POOL_SIZE,+FLEX_SPAN). */
 static int pool(void) {
     if (pool_fd>=0) return 0;
-    pool_fd=memfd_create("bb-guest-memory", MFD_CLOEXEC);
+    pool_fd=memfd_create("woc-guest-memory", MFD_CLOEXEC);
     if (pool_fd<0 || ftruncate(pool_fd,(off_t)(POOL_SIZE+FLEX_SPAN))) return -1;
     void *view=mmap(NULL,POOL_SIZE+FLEX_SPAN,PROT_READ|PROT_WRITE,MAP_SHARED|MAP_NORESERVE,pool_fd,0);
     if (view==MAP_FAILED) return -1;
@@ -347,7 +347,7 @@ static void drop_range(uintptr_t start, uintptr_t end) {
     }
     vma_erase(i,n);
 }
-/* bbport: write traps (runtime_memory_trap, below), kept across the game's own changes. */
+/* wocport: write traps (runtime_memory_trap, below), kept across the game's own changes. */
 static void trap_reapply(uintptr_t start, uintptr_t end);
 static void trap_forget(uintptr_t start, uintptr_t end);
 /* Places a host mapping; with MAP_FIXED it replaces what the guest had there. */
@@ -712,9 +712,9 @@ void *runtime_low_map(size_t size, int prot) {
     write_unlock();
     return p==MAP_FAILED ? NULL : p;
 }
-/* ---- GPU library interface (gpu/shim/bbgpu.cpp) ---- */
+/* ---- GPU library interface (gpu/shim/wocgpu.cpp) ---- */
 /* Optimizations switched off at run time (diagnostics): the number in the file named by
- * BB_TOGGLE_FILE, re-read every 250 ms. Bits: 1 region cache, 2 fetch shader cache,
+ * WOC_TOGGLE_FILE, re-read every 250 ms. Bits: 1 region cache, 2 fetch shader cache,
  * 4 page tracking early exit, 8 pending-op poll limit, 16 threaded Vulkan recording,
  * 32 texture descriptor cache, 64 lock-free upload check, 128 image lookup cache,
  * 256 buffer uploads on the recording thread, 512 barrier tracker insert memo,
@@ -722,15 +722,15 @@ void *runtime_low_map(size_t size, int prot) {
  * 4096 resource sharps read by the draw-preparation workers,
  * 8192 prepared draws from the draw-preparation workers,
  * 16384 small read-only buffer copies on the recording thread,
- * 32768 hot pages (opt-in with BB_HOT_PAGES=1),
- * 65536 unprotect the 256 KiB window around a guest write fault (BB_FAULT_WINDOW KiB),
- * 131072 large guest memory copies split across copy threads (BB_COPY_THREADS),
- * 262144 with BB_ASYNC_FENCES=1: wait for guest copies at fences again,
+ * 32768 hot pages (opt-in with WOC_HOT_PAGES=1),
+ * 65536 unprotect the 256 KiB window around a guest write fault (WOC_FAULT_WINDOW KiB),
+ * 131072 large guest memory copies split across copy threads (WOC_COPY_THREADS),
+ * 262144 with WOC_ASYNC_FENCES=1: wait for guest copies at fences again,
  * 524288 small guest copies batched for the copy threads instead of the recording thread,
  * 1073741824 the lock-free UpdateImage path for clean, tracked images. */
-/* Bits 32 and up: the draw pipeline and related GPU thread work (gpu/shim/bbport_toggles.h). */
+/* Bits 32 and up: the draw pipeline and related GPU thread work (gpu/shim/wocport_toggles.h). */
 uint64_t runtime_disabled_optimizations;
-/* bbport: a second number in BB_TOGGLE_FILE: temporary experiment bits (BbToggle::Experiment). */
+/* wocport: a second number in WOC_TOGGLE_FILE: temporary experiment bits (WocToggle::Experiment). */
 uint64_t runtime_experiment_bits;
 /* Speculative readers of guest memory (GPU draw-preparation workers) register a recovery
  * point: a fault on that thread jumps back to it instead of terminating (probe.c). */
@@ -750,9 +750,9 @@ static void *toggle_watcher(void *path) {
     }
     return NULL;
 }
-/* bbport: the GPU library provides direct memory chunks (see CHUNK). */
+/* wocport: the GPU library provides direct memory chunks (see CHUNK). */
 void runtime_memory_set_guest_chunk_whole(int whole) { whole_chunks=whole; }
-/* bbport: the host address of direct memory phys in the backing view (host memory import). */
+/* wocport: the host address of direct memory phys in the backing view (host memory import). */
 void *runtime_memory_backing_pointer(uint64_t phys) { return backing_base ? backing_base+phys : NULL; }
 void runtime_memory_set_guest_chunk_allocator(int (*alloc)(uint64_t phys, uint64_t size)) {
     write_lock();
@@ -760,7 +760,7 @@ void runtime_memory_set_guest_chunk_allocator(int (*alloc)(uint64_t phys, uint64
     write_unlock();
 }
 void runtime_memory_set_gpu_hooks(GpuRange map, GpuRange unmap, GpuRange invalidate) {
-    const char *toggles=getenv("BB_TOGGLE_FILE");
+    const char *toggles=getenv("WOC_TOGGLE_FILE");
     static pthread_t watcher;
     if (toggles && !watcher) pthread_create(&watcher,NULL,toggle_watcher,(void *)toggles);
     write_lock();
@@ -769,7 +769,7 @@ void runtime_memory_set_gpu_hooks(GpuRange map, GpuRange unmap, GpuRange invalid
     write_unlock();
     flush_hooks();
 }
-/* bbport: the CPU is about to write [address, address+size) without the guest's code doing it
+/* wocport: the CPU is about to write [address, address+size) without the guest's code doing it
  * (a file read into it): the GPU side is told first (Rasterizer::InvalidateMemory), for the parts
  * the GPU can access, as a driver is told of a resource update. Its write tracking then has
  * nothing to catch there. */
@@ -789,7 +789,7 @@ void runtime_memory_note_write(uintptr_t address, uint64_t size) {
     GpuRange hook=hook_note_write ? hook_note_write : hook_invalidate;
     for (int i=0;i<n;++i) hook(starts[i],ends[i]-starts[i]);
 }
-/* bbport BB_GUEST_IN_PLACE without page protection: pages whose CPU writes the GPU side must hear
+/* wocport WOC_GUEST_IN_PLACE without page protection: pages whose CPU writes the GPU side must hear
  * of (a VRAM copy of them, a texture made from them), one bit per 4 KiB page below 2^40. The GPU
  * side sets and clears them where it used to protect; the writers it cannot see coming (libc
  * imports, file reads, hooked game code) check them after writing and tell it, as a driver is
@@ -800,7 +800,7 @@ static GpuRange hook_cpu_write;
 void runtime_memory_set_cpu_write_hook(GpuRange hook) {
     if (!write_watch) {
         void *bits=mmap(NULL,WATCH_LIMIT>>15,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE,-1,0);
-        if (bits==MAP_FAILED) { perror("bbport: write watch bitmap"); return; }
+        if (bits==MAP_FAILED) { perror("wocport: write watch bitmap"); return; }
         write_watch=bits;
     }
     hook_cpu_write=hook;
@@ -828,7 +828,7 @@ void runtime_memory_note_cpu_write(uintptr_t address, uint64_t size) {
         }
     }
 }
-/* bbport: write traps the GPU side keeps on guest pages, by reason (bits: a VRAM copy of the page,
+/* wocport: write traps the GPU side keeps on guest pages, by reason (bits: a VRAM copy of the page,
  * an image made from it, ...). A page with any reason is read-only for the game even where its
  * own protection allows writes; the fault goes to the GPU library's handlers, and each clears
  * only its own reason. One owner for these protections: the layer's VRAM copies and the texture
@@ -878,7 +878,7 @@ void runtime_memory_trap(uintptr_t address, uint64_t size, unsigned reason, int 
     if (!size || address>=TRAP_LIMIT) return;
     if (!trap_reasons) {
         void *bytes=mmap(NULL,TRAP_LIMIT>>12,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE,-1,0);
-        if (bytes==MAP_FAILED) { perror("bbport: write trap table"); return; }
+        if (bytes==MAP_FAILED) { perror("wocport: write trap table"); return; }
         uint8_t *expected=NULL;
         if (!__atomic_compare_exchange_n(&trap_reasons,&expected,(uint8_t *)bytes,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE))
             munmap(bytes,TRAP_LIMIT>>12);
@@ -900,7 +900,7 @@ void runtime_memory_trap(uintptr_t address, uint64_t size, unsigned reason, int 
     pthread_mutex_unlock(&trap_mutex);
     read_unlock();
 }
-/* bbport: a libc write about to land on pages with write traps: the GPU side is told first and
+/* wocport: a libc write about to land on pages with write traps: the GPU side is told first and
  * lifts its traps, instead of the write faulting (a fault handler waits for the draws the GPU
  * thread has queued; libc copies into small textures every frame made the game's frames late).
  * Its announcement after the write (runtime_memory_note_cpu_write) stays as it was. */
@@ -916,7 +916,7 @@ unsigned runtime_memory_trap_reasons(uintptr_t address) {
     const uint8_t *table=__atomic_load_n(&trap_reasons,__ATOMIC_ACQUIRE);
     return table && address<TRAP_LIMIT ? __atomic_load_n(&table[address>>12],__ATOMIC_ACQUIRE) : 0;
 }
-/* bbport: where direct memory at a guest address lives (BB_GUEST_IN_PLACE: the GPU uses the game's
+/* wocport: where direct memory at a guest address lives (WOC_GUEST_IN_PLACE: the GPU uses the game's
  * memory where it is): its offset in direct memory and the end of the mapping, which is contiguous
  * there. 0 for anything else (flexible memory, reserved or unmapped addresses). */
 int runtime_memory_direct_phys(uintptr_t address, uint64_t *phys, uintptr_t *end) {
@@ -930,7 +930,7 @@ int runtime_memory_direct_phys(uintptr_t address, uint64_t *phys, uintptr_t *end
     read_unlock();
     return ok;
 }
-/* bbport: protection and direct memory type of the mapping at address (type -1: not direct
+/* wocport: protection and direct memory type of the mapping at address (type -1: not direct
  * memory); 0 when nothing is mapped there. */
 int runtime_memory_vma_info(uintptr_t address, int *prot, int *type, uintptr_t *end) {
     read_lock();
@@ -974,7 +974,7 @@ int runtime_memory_write_backing(uintptr_t address, const void *data, uint64_t s
     return ok;
 }
 /* Reads through the backing view: the host's copies of guest memory (uploads), which the GPU's
- * read protection (BB_READBACKS=2: GPU-written pages) must not stop. A fault there would ask the
+ * read protection (WOC_READBACKS=2: GPU-written pages) must not stop. A fault there would ask the
  * GPU thread for a readback while it waits for these very copies (a hang at start). Gaps read
  * as zeros. */
 void runtime_memory_read_backing(uintptr_t address, void *data, uint64_t size) {

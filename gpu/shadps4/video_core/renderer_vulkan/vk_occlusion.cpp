@@ -8,8 +8,8 @@
 #include <cstdlib>
 #include <string>
 
-#include "bblayer_write_traps.h"
-#include "bbport_toggles.h"
+#include "woclayer_write_traps.h"
+#include "wocport_toggles.h"
 
 #include "video_core/buffer_cache/buffer.h"
 #include "video_core/buffer_cache/buffer_cache.h"
@@ -154,7 +154,7 @@ void OcclusionQueries::Resolve() {
     for (const auto& event : pending) {
         entries.push_back({u32(event.address), u32(event.address >> 32), event.pairs,
                            u32(event.upto - resolved)});
-        if (BbStats::enabled && event.guest_address != 0) {
+        if (WocStats::enabled && event.guest_address != 0) {
             written_at[event.guest_address] = tick;
         }
         if (event.id != 0 && ReadTrace()) {
@@ -223,9 +223,9 @@ void OcclusionQueries::WriteBeforeLabel() {
     // A label ahead of results not written yet would let the CPU see the label before them. (Once
     // taken for the cause of slow launches; that was volatile blocks' refresh copies breaking
     // render passes, BufferCache::LayerVolatileAllowed. The game reads its results 2-10 ms after
-    // the event and finds them written either way: BB_OCCLUSION_READ_TRACE.)
+    // the event and finds them written either way: WOC_OCCLUSION_READ_TRACE.)
     static const bool ordered = [] {
-        const char* env = std::getenv("BB_OCCLUSION_LABEL_ORDER");
+        const char* env = std::getenv("WOC_OCCLUSION_LABEL_ORDER");
         return !env || env[0] != '0';
     }();
     if (!ordered) {
@@ -271,9 +271,9 @@ void OcclusionQueries::Event(VAddr address, u32 pairs) {
         started = true;
         scheduler.SetCarriedScope(this);
     }
-    // BB_OCCLUSION_TRACE=N (diagnostics): the first N events, with the frame and the render pass.
+    // WOC_OCCLUSION_TRACE=N (diagnostics): the first N events, with the frame and the render pass.
     static const u64 trace = [] {
-        const char* env = std::getenv("BB_OCCLUSION_TRACE");
+        const char* env = std::getenv("WOC_OCCLUSION_TRACE");
         return env ? std::strtoull(env, nullptr, 10) : 0ull;
     }();
     if (events < trace) {
@@ -281,7 +281,7 @@ void OcclusionQueries::Event(VAddr address, u32 pairs) {
         std::printf("Occlusion event %llu: %#llx pairs %u, frame %llu, %s %ux%u (%u colors, "
                     "depth %s), %zu pending\n",
                     (unsigned long long)events, (unsigned long long)address, pairs,
-                    (unsigned long long)BbStats::frame_number.load(std::memory_order_relaxed),
+                    (unsigned long long)WocStats::frame_number.load(std::memory_order_relaxed),
                     scheduler.IsRendering() ? "in a render pass" : "outside the last pass",
                     state.width, state.height, state.num_color_attachments,
                     state.depth_stencil_attachment.image_view ? "yes" : "no", pending.size());
@@ -295,7 +295,7 @@ void OcclusionQueries::Event(VAddr address, u32 pairs) {
     if (active) {
         EndSegment();
     }
-    if (const auto it = BbStats::enabled ? written_at.find(address) : written_at.end();
+    if (const auto it = WocStats::enabled ? written_at.find(address) : written_at.end();
         it != written_at.end()) {
         ++reused;
         reused_late += !scheduler.IsFree(it->second);
@@ -328,11 +328,11 @@ void OcclusionQueries::Event(VAddr address, u32 pairs) {
         ResetAhead();
         BeginSegment(false);
     }
-    // BB_FRAME_STATS: how often the game measures (every 5 s).
+    // WOC_FRAME_STATS: how often the game measures (every 5 s).
     static auto last_report = std::chrono::steady_clock::now();
     static u64 reported = 0;
     if (const auto now = std::chrono::steady_clock::now();
-        BbStats::enabled && now - last_report >= std::chrono::seconds(5)) {
+        WocStats::enabled && now - last_report >= std::chrono::seconds(5)) {
         std::printf("Occlusion queries: %llu events in %.0f s, %llu in all; %llu segments, "
                     "%llu not counted; labels after unwritten events: %llu (%llu in a render "
                     "pass); counters reused before their results were written: %llu of %llu; queries "
@@ -357,7 +357,7 @@ void OcclusionQueries::Event(VAddr address, u32 pairs) {
 
 bool OcclusionQueries::ReadTrace() {
     static const bool enabled = [] {
-        const char* env = std::getenv("BB_OCCLUSION_READ_TRACE");
+        const char* env = std::getenv("WOC_OCCLUSION_READ_TRACE");
         return env && env[0] == '1';
     }();
     return enabled;
@@ -368,7 +368,7 @@ void OcclusionQueries::WatchReads(VAddr address, u64 id) {
     std::scoped_lock lk{watch_mutex};
     auto& list = watched[page];
     if (list.empty()) {
-        BbLayer::WriteTraps::Set(page, 4096, BbLayer::WriteTraps::QueryReads, true);
+        WocLayer::WriteTraps::Set(page, 4096, WocLayer::WriteTraps::QueryReads, true);
     }
     list.push_back({id, 0, std::chrono::steady_clock::now()});
 }
@@ -402,10 +402,10 @@ bool OcclusionQueries::OnAccess(VAddr address, u64 rip, bool write, bool gpu_thr
             ++access_age[ms < 2 ? 0 : ms < 5 ? 1 : ms < 10 ? 2 : ms < 20 ? 3 : 4];
         }
         watched.erase(it);
-    } else if (!(BbLayer::WriteTraps::Reasons(address) & BbLayer::WriteTraps::QueryReads)) {
+    } else if (!(WocLayer::WriteTraps::Reasons(address) & WocLayer::WriteTraps::QueryReads)) {
         return false;
     }
-    BbLayer::WriteTraps::Set(page, 4096, BbLayer::WriteTraps::QueryReads, false);
+    WocLayer::WriteTraps::Set(page, 4096, WocLayer::WriteTraps::QueryReads, false);
     return true;
 }
 

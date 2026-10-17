@@ -8,7 +8,7 @@ tool dumped it (the SELF headers around it differ). The game's data must also un
 extraction tool that leaves parts of compressed sectors stale (LibOrbisPkg PkgTool on .NET 6 or
 newer) makes the game hang while it loads them, with no error. The first block of every file
 in its .psarc archives is checked.
-BB_SKIP_GAME_CHECK=1 skips both.
+WOC_SKIP_GAME_CHECK=1 skips both.
 
 Run as a script, it checks every data file of a game folder: game_check.py GAME_DIR
 """
@@ -85,7 +85,7 @@ def problem(game_dir, image_hash=None):
     another version), 'other_title' (a game the
     toolkit does not know), 'unreadable' or 'damaged_files' (the right game, but its data does
     not unpack: a broken extraction)."""
-    if os.environ.get('BB_SKIP_GAME_CHECK') == '1':
+    if os.environ.get('WOC_SKIP_GAME_CHECK') == '1':
         return None
     title, version = games.title_info(game_dir)
     game = games.by_serial(title)

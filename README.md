@@ -1,11 +1,11 @@
 THIS PROJECT IS NOT RELATED TO SHADPS4. ALL QUESTIONS RELATED TO THIS PROJECT SHOULD BE SENT TO THE DISCORD SERVER https://discord.gg/KYZRKk9CB, NOT TO THE SHADPS4 SERVER.
 
 
-# bbport — a native Linux port of Bloodborne
+# wocport — a native Linux port of Bloodborne
 
 **English** · [Русский](README.ru.md)
 
-bbport is the counterpart of Wine + DXVK for a single game: *Bloodborne* for PlayStation 4
+wocport is the counterpart of Wine + DXVK for a single game: *Bloodborne* for PlayStation 4
 (CUSA03173, game version 1.09) on an x86-64 Linux PC. The game's original executable runs
 directly on the PC:
 
@@ -52,9 +52,9 @@ Mesa/RADV) has been tested thoroughly.
     processor writes them. On AMD the game's memory is kept in a sparse buffer (the arena); on
     NVIDIA, Intel and others it goes through the layer's memory module: bound in place, VRAM
     copies as separate buffers, no sparse rebinding (NVIDIA's sparse binding froze the GPU for
-    seconds); `BB_LAYER_MEMORY=1/0` chooses by hand. Tested on an RX 7800 XT. On NVIDIA it can be chosen by hand (*New*); testers' results differ by scene,
+    seconds); `WOC_LAYER_MEMORY=1/0` chooses by hand. Tested on an RX 7800 XT. On NVIDIA it can be chosen by hand (*New*); testers' results differ by scene,
     some scenes are slower than with the old model, so it is not the default there yet. Not
-    tested on Intel. Without the launcher: `BB_PC_MODEL=1/0` (unset: by GPU, as *Auto*).
+    tested on Intel. Without the launcher: `WOC_PC_MODEL=1/0` (unset: by GPU, as *Auto*).
 
   [Changes in 0.5](docs/CHANGES_0.5.md); the prereleases: [pre4](docs/CHANGES_0.5-pre4.md),
   [pre3](docs/CHANGES_0.5-pre3.md), [pre2](docs/CHANGES_0.5-pre2.md).
@@ -63,7 +63,7 @@ Mesa/RADV) has been tested thoroughly.
 - **Unlocked frame rate.** Community patches (`patches/Bloodborne.xml`) make the simulation
   use the real frame time; ~90 FPS at 4K with FSR 4 Balanced on an RX 7800 XT, ~150 FPS at
   1440p with FSR 4 Quality. Also 30/60/90 FPS modes.
-- **Temporal upscaling built for this game.** Bloodborne has no velocity buffer, so bbport
+- **Temporal upscaling built for this game.** Bloodborne has no velocity buffer, so wocport
   computes motion vectors itself: camera motion from depth and the scene matrices, and object
   motion (characters, cloth, weapons) from the vertex positions of the previous frame. The
   scene is jittered sub-pixel (Halton) and rendered at a reduced resolution; the upscaler fills
@@ -93,26 +93,26 @@ Mesa/RADV) has been tested thoroughly.
 
 ## How it differs from shadPS4
 
-| | shadPS4 | bbport |
+| | shadPS4 | wocport |
 |---|---|---|
 | Scope | General PS4 emulator, many games | One game: Bloodborne v1.09 |
 | Loading | Its own ELF loader and kernel emulation at run time | The eboot is converted offline (`scripts/`) into an image with PS4 libc/Fios2 linked in; a C loader maps it and jumps into the game (loader and runtime: ~5k lines) |
 | Memory | The GPU's view of PS4 memory is kept in VRAM copies, synchronized through page-protection write tracking | By default the same model (as in 0.3); in the *New memory and translation model* mode: the game's memory in system RAM, used by the GPU in place, frequently read data in VRAM, freed when unused |
 | Command processor | Emulated: memory writes, DMA and fences are done by the CPU while decoding | By default the same; in the new mode translated into Vulkan commands that the GPU runs in stream order, fences written after the work has really finished |
 | System libraries | Broad HLE of the PS4 OS | A small runtime (`src/runtime_*.c`) that implements exactly what Bloodborne calls: memory, threads, sync, files, audio (incl. ATRAC9), pad, saves, AppContent |
-| GPU | shadPS4 video core and shader recompiler | The same core (vendored, GPL) with ~200 marked changes (`bbport:`) plus new modules: two-stage draw pipeline, render-state and texture-set memoization, render-scale proxies, motion vectors, FSR 3.1/4/4.1.1, frame capture and GPU profiler |
+| GPU | shadPS4 video core and shader recompiler | The same core (vendored, GPL) with ~200 marked changes (`wocport:`) plus new modules: two-stage draw pipeline, render-state and texture-set memoization, render-scale proxies, motion vectors, FSR 3.1/4/4.1.1, frame capture and GPU profiler |
 | GPU thread | One thread processes the whole command stream (the bottleneck in Bloodborne) | Decode and draw recording run on separate threads; the work scales with the hardware threads (Steam Deck included) |
 | Upscaling | — | Temporal (FSR 3.1, FSR 4, FSR 4.1.1) with the game's own motion vectors and jitter |
 | Game patches | Patch files applied by the emulator | The same community patches, compiled at start (`scripts/patches.py`); render resolution, effects and FPS from the launcher |
 
-Without shadPS4 there would be no bbport: its renderer and shader recompiler are the base of
+Without shadPS4 there would be no wocport: its renderer and shader recompiler are the base of
 the graphics side.
 
 ### Wine + DXVK for one game
 
 - **CPU.** The PS4 CPU is x86-64, so the game's code runs directly on the PC's CPU, with no
   emulation and no instruction translation.
-- **System libraries.** As Wine replaces the Windows API, the bbport runtime (`src/runtime_*.c`)
+- **System libraries.** As Wine replaces the Windows API, the wocport runtime (`src/runtime_*.c`)
   implements exactly the PS4 OS functions Bloodborne calls: memory, threads, files, audio, pad,
   saves.
 - **Memory.** In the new mode, as in a PC game: the game's data in system RAM, VRAM used the way
@@ -128,7 +128,7 @@ the graphics side.
   descriptor tables (the constant engine's dumps) are read only by the translator, so the CPU
   performs them. The game's occlusion queries (~60 a frame) are
   Vulkan occlusion queries; predication, `COPY_DATA` and `COND_EXEC` are translated too (check:
-  `BB_PM4_SELFTEST=1`). Details:
+  `WOC_PM4_SELFTEST=1`). Details:
   [docs/EMULATION_REMOVAL_PLAN.ru.md](docs/EMULATION_REMOVAL_PLAN.ru.md), "Шаг 4" (Russian).
 
 "Port" here means a build for this one game, not a rewrite of its source code, which the project
@@ -145,44 +145,44 @@ neither has nor includes.
 - Your decrypted game dump: the `CUSA03173` folder (eboot.bin, sce_module, ...), version 1.09.
   A dumped update is a separate folder: copy it over the base game, replacing files. The base
   game alone (1.00) crashes at start (guest offset 0x20348b8); the launcher and `run.sh` check
-  the executable and say what is missing (`BB_SKIP_GAME_CHECK=1` skips the check). The other
+  the executable and say what is missing (`WOC_SKIP_GAME_CHECK=1` skips the check). The other
   retail releases (the US `CUSA00900`, the Asian `CUSA03023`, ...) run the same 1.09 executable. Some dumps ship it
   with Lance McDonald's 60 fps patch baked in, which crashes when the gestures menu opens: the
-  check asks for a clean eboot.bin then (bbport has its own 60 fps).
+  check asks for a clean eboot.bin then (wocport has its own 60 fps).
 - To build: GCC, CMake, Ninja, Python 3, glslang, SDL3, Vulkan headers and the libraries in
   `shell.nix`. With [Nix](https://nixos.org) everything comes from `shell.nix` automatically.
 
 ## Build and run
 
 ```bash
-git clone --recursive https://github.com/deadinside28/bloodborne_pc.git bbport && cd bbport
-bash build.sh                        # builds out/bb-probe and out/gpu/libbbgpu.so
-BB_GAME_DIR=/path/to/CUSA03173 bash run.sh
+git clone --recursive https://github.com/deadinside28/bloodborne_pc.git wocport && cd wocport
+bash build.sh                        # builds out/woc-probe and out/gpu/libwocgpu.so
+WOC_GAME_DIR=/path/to/CUSA03173 bash run.sh
 ```
 
 or the launcher (pick the game folder, settings, *Start*):
 
 ```bash
-bash launcher/bb-launcher.sh         # launcher/install-desktop.sh adds it to the app menu
+bash launcher/woc-launcher.sh         # launcher/install-desktop.sh adds it to the app menu
 ```
 
 By default the game folder is expected next to the repository (`../CUSA03173`). Saves and the
 shader cache go to `user/` (the launcher lets you choose another folder); settings to
-`bbport.ini`. A gamepad is used through SDL3 (the launcher's *Controls → Controller* picks one
-when several are connected; `BB_GAMEPAD=<GUID or part of the name>`). The keyboard works too,
+`wocport.ini`. A gamepad is used through SDL3 (the launcher's *Controls → Controller* picks one
+when several are connected; `WOC_GAMEPAD=<GUID or part of the name>`). The keyboard works too,
 also next to a connected gamepad (the Steam Deck always has one); both are remapped in the
 launcher (*Controls*). The character name is typed on the keyboard in a box over the game.
 The touchpad: its left half (Tab, Back/Select) opens the gestures, the right half (Backspace)
 the key items. There is no PSN: the *Play online / offline* screen is skipped and the game opens
 its main menu offline (a game patch; the launcher's *Game effects → Skip the “play online / offline” choice*,
-`BB_SKIP_NETWORK_CHOICE=0` shows it). With several monitors, *Screen → Monitor* in the launcher
-(`BB_DISPLAY=<number or part of the name>`) picks the one for the game.
+`WOC_SKIP_NETWORK_CHOICE=0` shows it). With several monitors, *Screen → Monitor* in the launcher
+(`WOC_DISPLAY=<number or part of the name>`) picks the one for the game.
 
 **Resolution and preset changes:** for outputs other than 1080p (720p on the Steam Deck,
 1440p, 4K) the whole game renders at the preset's resolution, set by a patch at start — the
 fastest path. Changing the output or the preset in the in-game menu then needs *Apply and
 restart the game*. The *Live resolution changes* setting (launcher, in-game menu,
-`bbport.ini` `live_resolution=0|1|auto`; **off by default**) instead keeps the game at
+`wocport.ini` `live_resolution=0|1|auto`; **off by default**) instead keeps the game at
 1080p internally and scales its render targets at run time, so 720p/1080p/1440p/4K and the
 presets switch without a restart. It costs more: the game then believes it renders 1080p
 and draws more (e.g. ~8× more small lights), and some targets are copied between sizes —
@@ -257,11 +257,11 @@ line: the launcher's (and the AppImage's) `--build-fsr411 <DLL>`.
 **DLSS (NVIDIA GeForce RTX).** NVIDIA's DLSS SDK is not included: check out
 [github.com/NVIDIA/DLSS](https://github.com/NVIDIA/DLSS) (`include/` and `lib/Linux_x86_64` are
 enough) and build with `DLSS_SDK_ROOT=/path/to/DLSS bash build.sh`. That also builds the bridge
-`out/libbbport_dlss.so` (`gpu/dlss_bridge`, the only code that uses the SDK) and copies NVIDIA's
-`libnvidia-ngx-dlss.so.<version>` next to `out/bb-probe`; the driver provides the rest. Then pick
+`out/libwocport_dlss.so` (`gpu/dlss_bridge`, the only code that uses the SDK) and copies NVIDIA's
+`libnvidia-ngx-dlss.so.<version>` next to `out/woc-probe`; the driver provides the rest. Then pick
 *DLSS* in the launcher or the in-game menu: the preset sets the render size, Native AA is DLAA.
 DLSS gets the inputs FSR 3.1 gets (scene color, depth, motion vectors, jitter). Without the
-libraries, on other GPUs or with `BB_DLSS=0` it is listed as unavailable, and a DLSS setting falls
+libraries, on other GPUs or with `WOC_DLSS=0` it is listed as unavailable, and a DLSS setting falls
 back to FSR 3.1.
 
 The AppImage built with `DLSS_SDK_ROOT` carries the bridge and NVIDIA's library (NVIDIA's RTX SDK
@@ -278,15 +278,15 @@ SPIRV-Tools, Git) or from Nix; the AppImage has them prebuilt.
 another variant of its passes: other shaders and weights, other dispatch sizes. The build records
 both, INT8 into `fsr4_411/` and FP8 into `fsr4_411/fp8/`, and the game picks FP8 itself when the
 GPU has FP8 matrices (`VK_EXT_shader_float8`); the log says `Upscaler: FSR 4.1.1 replay, FP8 …`.
-`BB_FSR411_VARIANT=int8` forces INT8. Checked on an RX 7800 XT through vkd3d-proton's FP16
-emulation of FP8 (`BB_FSR4CAP_FP8=1` records it there too, `fp8emu/`): bit-exact with the DLL;
+`WOC_FSR411_VARIANT=int8` forces INT8. Checked on an RX 7800 XT through vkd3d-proton's FP16
+emulation of FP8 (`WOC_FSR4CAP_FP8=1` records it there too, `fp8emu/`): bit-exact with the DLL;
 **not yet run on RDNA4 hardware.**
 
 **AppImage** (Steam Deck): `bash build.sh && bash packaging/appimage.sh` →
-`dist/Bloodborne-bbport-x86_64.AppImage`; data in `~/.local/share/bbport`, `--play` starts the
+`dist/Bloodborne-wocport-x86_64.AppImage`; data in `~/.local/share/wocport`, `--play` starts the
 game without the launcher window (Game Mode). FSR 4.1.1 models are not packaged: build them with
-the launcher's button (see above); they go to `~/.local/share/bbport/fsr4_411`
-(`BB_PACKAGE_FSR411=1` bundles a local `fsr4_411` into an AppImage for your own devices). On the Steam Deck pick the 1280×720 output (the
+the launcher's button (see above); they go to `~/.local/share/wocport/fsr4_411`
+(`WOC_PACKAGE_FSR411=1` bundles a local `fsr4_411` into an AppImage for your own devices). On the Steam Deck pick the 1280×720 output (the
 game is 16:9; on the 1280×800 screen it gets thin bars).
 
 **Adding the AppImage to Steam** (*Add a Non-Steam Game*) needs no options; the compatibility tool
@@ -309,14 +309,14 @@ and exposes its vendor libraries alongside the bundled AMD/Intel drivers. This k
 NVIDIA userspace driver matched to the host kernel module. Standard Linux distributions keep
 these libraries under `/usr/lib*`; on NixOS the AppImage's internal `/nix/store` may hide them.
 In that case copy the NVIDIA libraries into an accessible directory and set
-`BB_NVIDIA_LIB_DIR=/path/to/libraries` (the NVIDIA manifest must also be accessible).
+`WOC_NVIDIA_LIB_DIR=/path/to/libraries` (the NVIDIA manifest must also be accessible).
 With the host's NVIDIA driver the AppImage also passes the host's EGL vendor files, NVIDIA's
 first (`__EGL_VENDOR_LIBRARY_FILENAMES`; without them NVIDIA's ICD gave no `vkCreateInstance` on
-some hosts, #107; `BB_NVIDIA_EGL=0`: off). Explicit `VK_DRIVER_FILES`/`VK_ICD_FILENAMES` overrides are preserved. Diagnose drivers inside
+some hosts, #107; `WOC_NVIDIA_EGL=0`: off). Explicit `VK_DRIVER_FILES`/`VK_ICD_FILENAMES` overrides are preserved. Diagnose drivers inside
 the package with:
 
 ```bash
-./Bloodborne-bbport-x86_64.AppImage --vulkan-info 2>&1 | tee bbport-vulkan.log
+./Bloodborne-wocport-x86_64.AppImage --vulkan-info 2>&1 | tee wocport-vulkan.log
 ```
 
 A user reported successful startup with FSR 3 on a GTX 1060 6GB (Fedora 44, NVIDIA
@@ -328,32 +328,32 @@ overlay is drawn (two drew doubled, offset text).
 When running from source, install MangoHud separately. A diagnostic launch with
 `VK_LOADER_LAYERS_DISABLE=~implicit~` also disables MangoHud.
 
-Useful variables: `BB_FRAME_STATS=1` (frame statistics, including a `Memory:` line: VRAM, GTT,
-RSS, images and guest blocks in VRAM), `BB_PC_MODEL=1` (the new memory and translation model,
-0, the old model as in 0.3, is the default), `BB_ANISO=N` (anisotropic filtering of scene textures; 16 by
+Useful variables: `WOC_FRAME_STATS=1` (frame statistics, including a `Memory:` line: VRAM, GTT,
+RSS, images and guest blocks in VRAM), `WOC_PC_MODEL=1` (the new memory and translation model,
+0, the old model as in 0.3, is the default), `WOC_ANISO=N` (anisotropic filtering of scene textures; 16 by
 default, 0 = the game's own),
-`BB_GC_IDLE_SECONDS=N` / `BB_VRAM_IDLE_SECONDS=N` (how long unused textures / buffers stay in VRAM;
-20 / 60), `BB_BREADCRUMBS=0` (no GPU breadcrumbs; with them a GPU hang names the draw or dispatch
-it is stuck in), `BB_GPU_PROFILE=1` (GPU time per
-pass), `BB_FSR4_PROFILE=1` (GPU time per FSR 4 pass), `BB_UPSCALER=taa|fsr3|fsr4|fsr411|off|none`,
-`BB_FRAMES_AHEAD=N` (how many frames the GPU command thread may run ahead of the GPU; 1 by default,
-0 = unbounded), `BB_PRESENT_THREAD=0` (present on the vblank thread, as before),
-`BB_LIVE_RES=1` (live resolution changes instead of the startup patch for outputs other than 1080p),
-`BB_PAD_RECORD=file` / `BB_PAD_REPLAY=file` (record a route with F9, replay it in scripted tests),
-`BB_GC_BUDGET_MB=N` (texture cache budget, as on integrated GPUs), `BB_VRAM_LIMIT_MB=N` (the VRAM
-budget taken as at most N MiB: checks the behaviour of cards with little VRAM), `BB_ASYNC_PIPELINES=0`
-(new pipelines compile at once and the game waits; by default in the background), `BB_PRESENT_DUMP_TRIGGER=file`
-with `BB_PRESENT_DUMP_COUNT=N` (dump N consecutive presented frames),
-`BB_FSR411_VARIANT=int8|fp8|fp8emu` (FSR 4.1.1 variant; by default FP8 where the GPU has FP8
-matrices), `BB_READBACKS=0|1|2` (reads of GPU-written memory by the game: 1 by default, 2
+`WOC_GC_IDLE_SECONDS=N` / `WOC_VRAM_IDLE_SECONDS=N` (how long unused textures / buffers stay in VRAM;
+20 / 60), `WOC_BREADCRUMBS=0` (no GPU breadcrumbs; with them a GPU hang names the draw or dispatch
+it is stuck in), `WOC_GPU_PROFILE=1` (GPU time per
+pass), `WOC_FSR4_PROFILE=1` (GPU time per FSR 4 pass), `WOC_UPSCALER=taa|fsr3|fsr4|fsr411|off|none`,
+`WOC_FRAMES_AHEAD=N` (how many frames the GPU command thread may run ahead of the GPU; 1 by default,
+0 = unbounded), `WOC_PRESENT_THREAD=0` (present on the vblank thread, as before),
+`WOC_LIVE_RES=1` (live resolution changes instead of the startup patch for outputs other than 1080p),
+`WOC_PAD_RECORD=file` / `WOC_PAD_REPLAY=file` (record a route with F9, replay it in scripted tests),
+`WOC_GC_BUDGET_MB=N` (texture cache budget, as on integrated GPUs), `WOC_VRAM_LIMIT_MB=N` (the VRAM
+budget taken as at most N MiB: checks the behaviour of cards with little VRAM), `WOC_ASYNC_PIPELINES=0`
+(new pipelines compile at once and the game waits; by default in the background), `WOC_PRESENT_DUMP_TRIGGER=file`
+with `WOC_PRESENT_DUMP_COUNT=N` (dump N consecutive presented frames),
+`WOC_FSR411_VARIANT=int8|fp8|fp8emu` (FSR 4.1.1 variant; by default FP8 where the GPU has FP8
+matrices), `WOC_READBACKS=0|1|2` (reads of GPU-written memory by the game: 1 by default, 2
 precise and slow, 0 off).
 More in [docs/](docs); recent changes: [docs/CHANGES_0.4.md](docs/CHANGES_0.4.md) (in Russian),
 [docs/CHANGES_2026-10-06.md](docs/CHANGES_2026-10-06.md).
 
-**Online play (shadNet).** A separate module, `out/gpu/libbbnet.so` (`gpu/bbnet`: shadPS4's network
+**Online play (shadNet).** A separate module, `out/gpu/libwocnet.so` (`gpu/wocnet`: shadPS4's network
 and PSN libraries from shadp2p, a shadPS4 fork, with the shadNet client), built when protobuf,
 nlohmann_json, OpenSSL, zlib and miniupnpc are there (`shell.nix`) and included in the AppImage.
-The launcher's *Online* page turns it on (`BB_ONLINE=1`): messages, bloodstains and ghosts come
+The launcher's *Online* page turns it on (`WOC_ONLINE=1`): messages, bloodstains and ghosts come
 from The Hunter's Dream, bells and summons go through a shadNet server (`srv.shadps4.net:31313` by
 default) with a shadNet account (Online ID and password). Offline the module is never loaded; a
 build without it plays offline only.
@@ -393,7 +393,7 @@ Tests: `bash build.sh --test`, `python3 -m unittest discover -s tests`, and
 
 ## Credits and licenses
 
-bbport is licensed under the **GNU GPL v2 or later** ([LICENSE](LICENSE)) — it contains code
+wocport is licensed under the **GNU GPL v2 or later** ([LICENSE](LICENSE)) — it contains code
 from shadPS4 (GPL-2.0-or-later). Third-party components keep their licenses:
 [shadPS4](https://github.com/shadps4-emu/shadPS4) video core and shader recompiler (GPL-2.0+),
 [sirit](https://github.com/shadps4-emu/sirit), [half](https://half.sourceforge.net/),

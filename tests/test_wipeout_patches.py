@@ -50,11 +50,11 @@ class WipeoutPatches(unittest.TestCase):
 
     def test_settings_and_environment(self):
         settings = {'vr_fps': '120', 'render_res': '2560x1440', 'fps_limit': '144'}
-        self.assertEqual(wp.settings_from(settings, {'BB_VR_FPS': '60'})['vr_fps'], '60')
+        self.assertEqual(wp.settings_from(settings, {'WOC_VR_FPS': '60'})['vr_fps'], '60')
         self.assertEqual(wp.environment(settings, {}),
-                         ['BB_INTERNAL_WIDTH=2560', 'BB_INTERNAL_HEIGHT=1440', 'BB_FPS_LIMIT=144'])
-        # Explicit environment variables win over bbport.ini.
-        self.assertEqual(wp.environment(settings, {'BB_INTERNAL_WIDTH': '1920', 'BB_FPS_LIMIT': '0'}),
+                         ['WOC_INTERNAL_WIDTH=2560', 'WOC_INTERNAL_HEIGHT=1440', 'WOC_FPS_LIMIT=144'])
+        # Explicit environment variables win over wocport.ini.
+        self.assertEqual(wp.environment(settings, {'WOC_INTERNAL_WIDTH': '1920', 'WOC_FPS_LIMIT': '0'}),
                          [])
 
 

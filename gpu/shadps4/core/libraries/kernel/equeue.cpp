@@ -320,14 +320,14 @@ bool EqueueInternal::EventExists(u64 id, s16 filter) {
     return it != m_events.cend();
 }
 
-static s32 NextEqueueHandle() { // bbport
+static s32 NextEqueueHandle() { // wocport
     static std::atomic<s32> next{0x40000};
     return next++;
 }
 
 s32 PS4_SYSV_ABI posix_kqueue() {
     // Reserve a file handle for the kqueue
-    // bbport: equeue handles come from their own range, not the file table.
+    // wocport: equeue handles come from their own range, not the file table.
     s32 kqueue_handle = NextEqueueHandle();
 
     // Plenty of equeue logic uses names to identify queues.
@@ -444,7 +444,7 @@ int PS4_SYSV_ABI sceKernelCreateEqueue(OrbisKernelEqueue* eq, const char* name) 
     LOG_INFO(Kernel_Event, "name = {}", name);
 
     // Reserve a file handle for the kqueue
-    // bbport: equeue handles come from their own range, not the file table.
+    // wocport: equeue handles come from their own range, not the file table.
     OrbisKernelEqueue kqueue_handle = NextEqueueHandle();
 
     // Create the equeue
@@ -465,7 +465,7 @@ int PS4_SYSV_ABI sceKernelDeleteEqueue(OrbisKernelEqueue eq) {
 }
 
 namespace {
-// bbport (frame stats): time the game spends waiting in each event queue, and the events it got.
+// wocport (frame stats): time the game spends waiting in each event queue, and the events it got.
 struct EqueueWaitStat {
     std::string name;
     u64 waits = 0, ns = 0, events = 0;

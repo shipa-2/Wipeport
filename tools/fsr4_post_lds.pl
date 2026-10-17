@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 # fsr4_post_lds.pl < post.comp > post_lds.comp
-# bbport: rewrites a decompiled FSR 4 v07 post pass (spirv-cross GLSL) for RDNA3.
+# wocport: rewrites a decompiled FSR 4 v07 post pass (spirv-cross GLSL) for RDNA3.
 #
 # Each invocation computes a 2x2 block of output pixels and stores them into three images
 # (recurrent state, history, output). Stores of every other pixel from three images cost ~4x
@@ -31,7 +31,7 @@ for my $image (sort keys %slot) {
     die "expected one store to $image, found $n\n" unless $n == 1;
 }
 my $decl = <<'GLSL';
-// bbport: the workgroup's 16x16 output block, stored in contiguous rows after the loop.
+// wocport: the workgroup's 16x16 output block, stored in contiguous rows after the loop.
 shared vec4 bb_rec[256];
 shared vec4 bb_hist[256];
 shared vec4 bb_out[256];

@@ -1,4 +1,4 @@
-// bbport: shadPS4 settings used by the video core, read once from BB_* environment
+// wocport: shadPS4 settings used by the video core, read once from WOC_* environment
 // variables (defaults match shadPS4 except the pipeline cache, which is on).
 #pragma once
 #include <algorithm>
@@ -19,25 +19,25 @@ public:
         const char* v = std::getenv(name);
         return v ? std::strtol(v, nullptr, 10) : fallback;
     }
-    s32 GetGpuId() { static const auto value = s32(Number("BB_GPU_ID", -1)); return value; }
-    // bbport: the host camera (SDL) the PS camera library opens, -1 none (AstroQuest's setting).
-    s32 GetCameraId() { static const auto value = s32(Number("BB_CAMERA_ID", -1)); return value; }
-    u32 GetInternalScreenWidth() { static const auto value = u32(Number("BB_INTERNAL_WIDTH", 1920)); return value; }
-    u32 GetInternalScreenHeight() { static const auto value = u32(Number("BB_INTERNAL_HEIGHT", 1080)); return value; }
-    std::string GetPresentMode() { const char* v = std::getenv("BB_PRESENT_MODE"); return v ? v : "Mailbox"; }
-    int GetRcasAttenuation() { static const auto value = int(Number("BB_RCAS_ATTENUATION", 250)); return value; }
-    // bbport: Relaxed by default: without readbacks FaceGen reads stale GPU-written vertices
+    s32 GetGpuId() { static const auto value = s32(Number("WOC_GPU_ID", -1)); return value; }
+    // wocport: the host camera (SDL) the PS camera library opens, -1 none (AstroQuest's setting).
+    s32 GetCameraId() { static const auto value = s32(Number("WOC_CAMERA_ID", -1)); return value; }
+    u32 GetInternalScreenWidth() { static const auto value = u32(Number("WOC_INTERNAL_WIDTH", 1920)); return value; }
+    u32 GetInternalScreenHeight() { static const auto value = u32(Number("WOC_INTERNAL_HEIGHT", 1080)); return value; }
+    std::string GetPresentMode() { const char* v = std::getenv("WOC_PRESENT_MODE"); return v ? v : "Mailbox"; }
+    int GetRcasAttenuation() { static const auto value = int(Number("WOC_RCAS_ATTENUATION", 250)); return value; }
+    // wocport: Relaxed by default: without readbacks FaceGen reads stale GPU-written vertices
     // (vertex explosions); in Hunter's Nightmare it costs no measurable frame rate.
-    u32 GetReadbacksMode() { static const auto value = u32(Number("BB_READBACKS", GpuReadbacksMode::Relaxed)); return value; }
-    // bbport: uncapped presets (run.sh: BB_VBLANK_HZ=480; 0 means the same): vblank runs at
+    u32 GetReadbacksMode() { static const auto value = u32(Number("WOC_READBACKS", GpuReadbacksMode::Relaxed)); return value; }
+    // wocport: uncapped presets (run.sh: WOC_VBLANK_HZ=480; 0 means the same): vblank runs at
     // 480 Hz, and a finished frame is presented as soon as it arrives (IsUncappedVblank), not on
     // the next vblank tick (at the display rate frames alternated 10/20 ms at 100 Hz: judder; at
-    // 480 Hz they snap to ~2.1 ms steps). The frame rate is not limited unless BB_FPS_LIMIT
+    // 480 Hz they snap to ~2.1 ms steps). The frame rate is not limited unless WOC_FPS_LIMIT
     // (launcher: "FPS limit") asks for it. Other values are used as given (60/90: the
     // fixed-timestep presets, flips on vblank ticks).
     u32 GetVblankFrequency() {
         static const u32 value = [] {
-            const long hz = Number("BB_VBLANK_HZ", 60);
+            const long hz = Number("WOC_VBLANK_HZ", 60);
             return hz > 0 ? u32(hz) : 480u;
         }();
         return value;
@@ -45,37 +45,37 @@ public:
     /// Vblank faster than any fixed-timestep preset (above 120 Hz, or 0): flips at once.
     bool IsUncappedVblank() {
         static const bool value = [] {
-            const long hz = Number("BB_VBLANK_HZ", 60);
+            const long hz = Number("WOC_VBLANK_HZ", 60);
             return hz <= 0 || hz > 120;
         }();
         return value;
     }
-    /// Frames per second the present thread lets through; 0 = no limit (BB_FPS_LIMIT).
+    /// Frames per second the present thread lets through; 0 = no limit (WOC_FPS_LIMIT).
     u32 GetFrameLimit() {
-        static const u32 value = u32(std::max(0L, Number("BB_FPS_LIMIT", 0)));
+        static const u32 value = u32(std::max(0L, Number("WOC_FPS_LIMIT", 0)));
         return value;
     }
-    bool IsCopyGpuBuffers() { static const auto value = Flag("BB_COPY_GPU_BUFFERS", false); return value; }
-    bool IsDirectMemoryAccessEnabled() { static const auto value = Flag("BB_DIRECT_MEMORY_ACCESS", false); return value; }
-    bool IsDumpShaders() { static const auto value = Flag("BB_DUMP_SHADERS", false); return value; }
-    bool IsFsrEnabled() { static const auto value = Flag("BB_FSR1", false); return value; }
-    bool IsHdrAllowed() { static const auto value = Flag("BB_HDR", false); return value; }
-    bool IsNullGPU() { static const auto value = Flag("BB_NULL_GPU", false); return value; }
+    bool IsCopyGpuBuffers() { static const auto value = Flag("WOC_COPY_GPU_BUFFERS", false); return value; }
+    bool IsDirectMemoryAccessEnabled() { static const auto value = Flag("WOC_DIRECT_MEMORY_ACCESS", false); return value; }
+    bool IsDumpShaders() { static const auto value = Flag("WOC_DUMP_SHADERS", false); return value; }
+    bool IsFsrEnabled() { static const auto value = Flag("WOC_FSR1", false); return value; }
+    bool IsHdrAllowed() { static const auto value = Flag("WOC_HDR", false); return value; }
+    bool IsNullGPU() { static const auto value = Flag("WOC_NULL_GPU", false); return value; }
     bool IsPatchShaders() { return false; }
     bool IsPipelineCacheArchived() { return false; }
-    bool IsPipelineCacheEnabled() { static const auto value = Flag("BB_PIPELINE_CACHE", true); return value; }
-    bool IsRcasEnabled() { static const auto value = Flag("BB_RCAS", true); return value; }
-    bool IsReadbackLinearImagesEnabled() { static const auto value = Flag("BB_READBACK_LINEAR", false); return value; }
-    // BB_RENDERDOC=1: RenderDoc's library is loaded; BB_RENDERDOC_TRIGGER (a file) captures a frame.
-    bool IsRenderdocEnabled() { static const auto value = Flag("BB_RENDERDOC", false); return value; }
+    bool IsPipelineCacheEnabled() { static const auto value = Flag("WOC_PIPELINE_CACHE", true); return value; }
+    bool IsRcasEnabled() { static const auto value = Flag("WOC_RCAS", true); return value; }
+    bool IsReadbackLinearImagesEnabled() { static const auto value = Flag("WOC_READBACK_LINEAR", false); return value; }
+    // WOC_RENDERDOC=1: RenderDoc's library is loaded; WOC_RENDERDOC_TRIGGER (a file) captures a frame.
+    bool IsRenderdocEnabled() { static const auto value = Flag("WOC_RENDERDOC", false); return value; }
     bool IsShaderCollect() { return false; }
     bool IsUserfaultfdTracking() { return false; }
     bool IsVkCrashDiagnosticEnabled() { return false; }
-    bool IsVkGuestMarkersEnabled() { static const auto value = Flag("BB_VK_MARKERS", false); return value; }
-    bool IsVkHostMarkersEnabled() { static const auto value = Flag("BB_VK_MARKERS", false); return value; }
+    bool IsVkGuestMarkersEnabled() { static const auto value = Flag("WOC_VK_MARKERS", false); return value; }
+    bool IsVkHostMarkersEnabled() { static const auto value = Flag("WOC_VK_MARKERS", false); return value; }
     bool IsVkValidationCoreEnabled() { return true; }
-    bool IsVkValidationEnabled() { static const auto value = Flag("BB_VK_VALIDATION", false); return value; }
+    bool IsVkValidationEnabled() { static const auto value = Flag("WOC_VK_VALIDATION", false); return value; }
     bool IsVkValidationGpuEnabled() { return false; }
-    bool IsVkValidationSyncEnabled() { static const auto value = Flag("BB_VK_VALIDATION_SYNC", false); return value; }
+    bool IsVkValidationSyncEnabled() { static const auto value = Flag("WOC_VK_VALIDATION_SYNC", false); return value; }
 };
 #define EmulatorSettings (*EmulatorSettingsImpl::GetInstance())

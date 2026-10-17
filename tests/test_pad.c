@@ -4,10 +4,10 @@
 #include "../src/runtime_pad.c"
 
 static int capture;
-int bbgpu_overlay_captures_input(void) { return capture; }
-void bbgpu_mouse_take(double *dx, double *dy, int *up, int *down) { *dx=*dy=0; *up=*down=0; }
-int bbgpu_mouse_captured(void) { return 0; }
-void bbgpu_mouse_look_enable(int enabled) { (void)enabled; }
+int wocgpu_overlay_captures_input(void) { return capture; }
+void wocgpu_mouse_take(double *dx, double *dy, int *up, int *down) { *dx=*dy=0; *up=*down=0; }
+int wocgpu_mouse_captured(void) { return 0; }
+void wocgpu_mouse_look_enable(int enabled) { (void)enabled; }
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *name) {
     (void)table; (void)count; (void)name;
     return 0;
@@ -22,20 +22,20 @@ static void inject(const char *path, const char *tokens) {
 }
 
 int main(void) {
-    char path[]="/tmp/bbport-pad-test-XXXXXX";
+    char path[]="/tmp/wocport-pad-test-XXXXXX";
     int fd=mkstemp(path);
     assert(fd>=0);
     close(fd);
-    setenv("BB_PAD_FILE",path,1);
-    /* bbport.ini controls: buttons moved, a trigger as a button and a button as a trigger. */
-    char config[]="/tmp/bbport-pad-config-XXXXXX";
+    setenv("WOC_PAD_FILE",path,1);
+    /* wocport.ini controls: buttons moved, a trigger as a button and a button as a trigger. */
+    char config[]="/tmp/wocport-pad-config-XXXXXX";
     int config_fd=mkstemp(config);
     assert(config_fd>=0);
     const char controls[]="upscaler=fsr3\npad.cross=b\npad.circle=a\npad.r2=rightshoulder\n"
                           "pad.r1=righttrigger\nkey.cross=X, Space\npad.bogus=a\n";
     assert(write(config_fd,controls,sizeof(controls)-1)==(ssize_t)(sizeof(controls)-1));
     close(config_fd);
-    setenv("BB_CONFIG",config,1);
+    setenv("WOC_CONFIG",config,1);
     setenv("SDL_VIDEODRIVER","dummy",1);
     /* Only the virtual test controller is a gamepad, whatever is plugged in. */
     SDL_SetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT,"0x1d50/0x6189");
@@ -60,7 +60,7 @@ int main(void) {
     desc.nbuttons=SDL_GAMEPAD_BUTTON_COUNT;
     desc.button_mask=(1u<<SDL_GAMEPAD_BUTTON_COUNT)-1;
     desc.axis_mask=(1u<<SDL_GAMEPAD_AXIS_COUNT)-1;
-    desc.name="bbport test controller";
+    desc.name="wocport test controller";
     desc.vendor_id=0x1d50;
     desc.product_id=0x6189;
     desc.ntouchpads=1;

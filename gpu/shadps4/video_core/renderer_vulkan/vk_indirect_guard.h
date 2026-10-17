@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// bbport: indirect dispatches run from checked group counts.
+// wocport: indirect dispatches run from checked group counts.
 //
 // The game's indirect dispatches take their group counts from memory a shader wrote. Twice
 // (issues #34 and #32, the PC memory model) those counts were garbage — 1.2 and 3.8 billion
@@ -7,8 +7,8 @@
 // timeout, was reset: device lost, the game gone. Bloodborne's real counts are at most a few
 // hundred. Before each indirect dispatch a one-thread shader (indirect_guard.comp) copies the
 // counts to a slot of our own, zero if they are implausible (past the device's limits or
-// BB_INDIRECT_GUARD_MAX groups in all, default 4M), and the dispatch reads that slot. Skipped
-// dispatches are counted and reported. BB_INDIRECT_GUARD=0: the game's counts as they are.
+// WOC_INDIRECT_GUARD_MAX groups in all, default 4M), and the dispatch reads that slot. Skipped
+// dispatches are counted and reported. WOC_INDIRECT_GUARD=0: the game's counts as they are.
 #pragma once
 
 #include <atomic>

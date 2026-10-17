@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright 2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
-// bbport: AstroQuest's VrExporter with only its local path: the frames of the emulated headset
+// wocport: AstroQuest's VrExporter with only its local path: the frames of the emulated headset
 // go to a headset of this machine through its OpenXR runtime (SteamVR), Core::Vr::OpenXrHost.
 // (AstroQuest's other path, a Quest app owning the images over a socket, is not ported.)
 

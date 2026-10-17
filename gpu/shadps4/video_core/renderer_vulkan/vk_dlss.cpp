@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright 2026 IFreemz, bbport contributors
+// SPDX-FileCopyrightText: Copyright 2026 IFreemz, wocport contributors
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm>
@@ -17,10 +17,10 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
-#include "../../../dlss_bridge/bbport_dlss_bridge.h"
+#include "../../../dlss_bridge/wocport_dlss_bridge.h"
 #elif defined(__linux__)
 #include <dlfcn.h>
-#include "../../../dlss_bridge/bbport_dlss_bridge.h"
+#include "../../../dlss_bridge/wocport_dlss_bridge.h"
 #endif
 
 namespace Vulkan {
@@ -34,7 +34,7 @@ int Dlss::QualityForScale(float scale) {
 
 namespace {
 #ifdef _WIN32
-constexpr wchar_t BridgeName[] = L"bbport_dlss.dll";
+constexpr wchar_t BridgeName[] = L"wocport_dlss.dll";
 constexpr wchar_t NgxName[] = L"nvngx_dlss.dll";
 using Module = HMODULE;
 
@@ -57,9 +57,9 @@ void* FindSymbol(Module module, const char* name) {
     return reinterpret_cast<void*>(GetProcAddress(module, name));
 }
 #else
-// bbport (Linux): libbbport_dlss.so (gpu/dlss_bridge) and NVIDIA's libnvidia-ngx-dlss.so.<version>
-// next to bb-probe; NGX finds the latter through the bridge's path list.
-constexpr char BridgeName[] = "libbbport_dlss.so";
+// wocport (Linux): libwocport_dlss.so (gpu/dlss_bridge) and NVIDIA's libnvidia-ngx-dlss.so.<version>
+// next to woc-probe; NGX finds the latter through the bridge's path list.
+constexpr char BridgeName[] = "libwocport_dlss.so";
 using Module = void*;
 
 std::filesystem::path ExecutableDirectory() {
@@ -88,11 +88,11 @@ Module LoadModule(const std::filesystem::path& path) {
 void* FindSymbol(Module module, const char* name) {
     return dlsym(module, name);
 }
-/// The player's DLSS folder (<user>/dlss, BB_GPU_USER_DIR; beside bb-probe without it): NGX's
+/// The player's DLSS folder (<user>/dlss, WOC_GPU_USER_DIR; beside woc-probe without it): NGX's
 /// logs, and NVIDIA's library when the player chose one in the launcher (newer than the package's,
 /// or the only one: the package may come without it).
 std::filesystem::path UserDlssDirectory() {
-    if (const char* user = std::getenv("BB_GPU_USER_DIR"); user && user[0]) {
+    if (const char* user = std::getenv("WOC_GPU_USER_DIR"); user && user[0]) {
         std::error_code error;
         const auto absolute = std::filesystem::absolute(std::filesystem::path{user} / "dlss", error);
         return error ? std::filesystem::path{user} / "dlss" : absolute;
@@ -100,7 +100,7 @@ std::filesystem::path UserDlssDirectory() {
     return ExecutableDirectory() / "dlss";
 }
 
-/// Where NVIDIA's DLSS library is: the player's own first, then beside bb-probe; empty: nowhere.
+/// Where NVIDIA's DLSS library is: the player's own first, then beside woc-probe; empty: nowhere.
 std::filesystem::path NgxDirectory() {
     for (const auto& directory : {UserDlssDirectory(), ExecutableDirectory()}) {
         if (HasNgx(directory)) {
@@ -110,7 +110,7 @@ std::filesystem::path NgxDirectory() {
     return {};
 }
 
-/// Where the bridge is: beside bb-probe (the package, a build with DLSS_SDK_ROOT), else the
+/// Where the bridge is: beside woc-probe (the package, a build with DLSS_SDK_ROOT), else the
 /// player's DLSS folder; empty: nowhere.
 std::filesystem::path BridgeDirectory() {
     for (const auto& directory : {ExecutableDirectory(), UserDlssDirectory()}) {
@@ -154,7 +154,7 @@ bool CollectExtensions(const VkExtensionProperties* required, u32 count,
 
 struct Dlss::Impl {
     Module module{};
-    const BbDlssApi* api{};
+    const WocDlssApi* api{};
     std::vector<std::string> instance_extensions, device_extensions;
     std::optional<FeatureDesc> feature;
     std::string problem;
@@ -169,7 +169,7 @@ struct Dlss::Impl {
 
 Dlss* Dlss::Get() {
     static Dlss* const dlss = []() -> Dlss* {
-        const char* setting = std::getenv("BB_DLSS");
+        const char* setting = std::getenv("WOC_DLSS");
         if (setting && setting[0] == '0') {
             return nullptr;
         }
@@ -191,10 +191,10 @@ Dlss* Dlss::Get() {
 Dlss::Dlss() : impl{std::make_unique<Impl>()} {
     impl->module = LoadModule(BridgeDirectory() / BridgeName);
     const auto get_api =
-        impl->module ? reinterpret_cast<BbDlssGetApiFn>(FindSymbol(impl->module, "BbDlssGetApi"))
+        impl->module ? reinterpret_cast<WocDlssGetApiFn>(FindSymbol(impl->module, "WocDlssGetApi"))
                      : nullptr;
     impl->api = get_api ? get_api() : nullptr;
-    if (!impl->api || impl->api->abi != BBPORT_DLSS_BRIDGE_ABI) {
+    if (!impl->api || impl->api->abi != WOCPORT_DLSS_BRIDGE_ABI) {
         impl->Disable("the DLSS bridge library is missing or from another version");
         return;
     }
@@ -287,7 +287,7 @@ bool Dlss::CreateFeature(vk::CommandBuffer command, const FeatureDesc& desc) {
         return false;
     }
     impl->feature.reset();
-    const BbDlssFeature feature{desc.input_width,  desc.input_height, desc.output_width,
+    const WocDlssFeature feature{desc.input_width,  desc.input_height, desc.output_width,
                                 desc.output_height, desc.quality,      0,
                                 0,                  desc.hdr ? 1 : 0};
     if (!impl->api->CreateFeature(command, &feature)) {
@@ -303,14 +303,14 @@ bool Dlss::Evaluate(vk::CommandBuffer command, const Frame& frame) {
     }
     const auto image = [](const Resource& r) {
         const vk::ImageSubresourceRange range{r.aspect, 0, 1, 0, 1};
-        return BbDlssImage{r.image,
+        return WocDlssImage{r.image,
                            r.view,
                            static_cast<VkImageSubresourceRange>(range),
                            static_cast<VkFormat>(r.format),
                            r.width,
                            r.height};
     };
-    const BbDlssEvaluate parameters{image(frame.color),  image(frame.depth), image(frame.motion),
+    const WocDlssEvaluate parameters{image(frame.color),  image(frame.depth), image(frame.motion),
                                     image(frame.output), frame.jitter_x,     frame.jitter_y,
                                     frame.reset ? 1 : 0, frame.frame_ms,     frame.sharpness};
     return impl->api->Evaluate(command, &parameters) != 0;

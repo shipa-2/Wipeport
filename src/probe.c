@@ -7,7 +7,7 @@
 #include <inttypes.h>
 #include <cpuid.h>
 #include "runtime.h"
-#include "gpu/bbgpu.h"
+#include "gpu/wocgpu.h"
 #if !defined(__x86_64__) || !defined(__GNUC__)
 #error This prototype requires x86-64 GCC or Clang (including MinGW).
 #endif
@@ -48,9 +48,9 @@ static void fail(const char *message) { fprintf(stderr, "ERROR: %s\n", message);
 /* The game's code was compiled for the PS4's CPU (AMD Jaguar) and runs as it is: AVX, BMI1
  * (andn/bextr/blsr/tzcnt), MOVBE, LZCNT and POPCNT, thousands of each in eboot.bin. A CPU without
  * them stops at the first one with SIGILL (exit code 132, issue #26), and lzcnt/tzcnt even run as
- * bsr/bsf there, with other results. Said before the game starts; BB_SKIP_CPU_CHECK=1 skips it. */
+ * bsr/bsf there, with other results. Said before the game starts; WOC_SKIP_CPU_CHECK=1 skips it. */
 static void check_cpu(void) {
-    const char *skip = getenv("BB_SKIP_CPU_CHECK");
+    const char *skip = getenv("WOC_SKIP_CPU_CHECK");
     if (skip && !strcmp(skip, "1")) return;
     unsigned a, b, c, d, leaf1_c = 0, leaf7_b = 0, ext1_c = 0;
     if (__get_cpuid(1, &a, &b, &c, &d)) leaf1_c = c;
@@ -77,7 +77,7 @@ static void check_cpu(void) {
     fprintf(stderr,
             "ERROR: this CPU lacks %s. The game's code was compiled for the PS4's CPU and uses "
             "these instructions directly: it needs an Intel Haswell (4th generation Core, 2013) or "
-            "newer, or an AMD Ryzen. BB_SKIP_CPU_CHECK=1 starts anyway.\n", missing);
+            "newer, or an AMD Ryzen. WOC_SKIP_CPU_CHECK=1 starts anyway.\n", missing);
     exit(1);
 }
 static uint64_t read64(FILE *f) {
@@ -143,7 +143,7 @@ static ABI void guest_exit(void) { puts("Runtime: process finalizer callback rea
 #ifndef _WIN32
 static void fault(int sig, siginfo_t *info, void *context) {
     /* GPU page tracking (write-protected guest pages) is resolved first. */
-    if (gpu_enabled && sig == SIGSEGV && bbgpu_handle_fault(context, info->si_addr)) return;
+    if (gpu_enabled && sig == SIGSEGV && wocgpu_handle_fault(context, info->si_addr)) return;
     /* A speculative guest memory read (runtime_memory.c) failed: resume its recovery point. */
     if ((sig == SIGSEGV || sig == SIGBUS) && runtime_fault_recover) {
         sigjmp_buf *recover = runtime_fault_recover;
@@ -168,7 +168,7 @@ static void fault(int sig, siginfo_t *info, void *context) {
     else
         snprintf(line, sizeof(line), "Fault (signal %d) at RIP %p, address %p\n", sig, (void *)rip, info->si_addr);
     { ssize_t written_=write(2, line, strlen(line)); (void)written_; }
-    if (gpu_enabled) bbgpu_dump_guest_writes(context);
+    if (gpu_enabled) wocgpu_dump_guest_writes(context);
     /* Outside the image and any shared object (generated code, a freed mapping): the mapping
      * from /proc/self/maps, and the thread. */
     if (rip - (uintptr_t)image >= 0x10000000 && !(dladdr((void *)rip, &where) && where.dli_fname)) {
@@ -277,13 +277,13 @@ static int mapped(Segment *segments, uint64_t count, uint64_t address, uint64_t 
             address - segments[i].address <= segments[i].size - bytes) return 1;
     return 0;
 }
-/* BBPATCH2 (patches.py): the patches' image base, then byte writes at image offsets, applied
+/* WOCPTCH2 (patches.py): the patches' image base, then byte writes at image offsets, applied
  * after relocation. A write may replace a whole base-relative pointer slot (60/90 FPS++ swap
  * function pointers): the patch holds the address at the patches' base, rebased here. */
 static void apply_patches(const char *path, Segment *segments, uint64_t ns, const Reloc *relocs, uint64_t nr) {
     FILE *f=fopen(path,"rb");
     char magic[8];
-    if (!f || fread(magic,1,8,f)!=8 || memcmp(magic,"BBPATCH2",8)) fail("invalid patch file");
+    if (!f || fread(magic,1,8,f)!=8 || memcmp(magic,"WOCPTCH2",8)) fail("invalid patch file");
     uint64_t base=read64(f), count=read64(f), bytes=0, rebased=0;
     unsigned char data[4096];
     for (uint64_t i=0;i<count;++i) {
@@ -363,7 +363,7 @@ int main(int argc, char **argv) {
         FILE *profile=fopen(content_profile,"rb");
         unsigned char data[28];
         if (!profile) fail("cannot open content profile");
-        if (fread(data,1,sizeof(data),profile)!=sizeof(data) || fgetc(profile)!=EOF || memcmp(data,"BBCONT01",8)) fail("invalid content profile");
+        if (fread(data,1,sizeof(data),profile)!=sizeof(data) || fgetc(profile)!=EOF || memcmp(data,"WOCCONT1",8)) fail("invalid content profile");
         fclose(profile);
         uint32_t values[5];
         for (unsigned i=0;i<5;++i) {
@@ -379,13 +379,13 @@ int main(int argc, char **argv) {
         if (sfo_value(sfo,"INSTALL_DIR_SAVEDATA",id,sizeof(id),NULL) || sfo_value(sfo,"TITLE_ID",id,sizeof(id),NULL))
             runtime_savedata_configure(id);
     }
-    bbgpu_register_kernel();
+    wocgpu_register_kernel();
 #ifdef _WIN32
     SYSTEM_INFO system_info; GetSystemInfo(&system_info); page_size = system_info.dwPageSize;
 #else
     page_size = (size_t)sysconf(_SC_PAGESIZE);
-    /* BB_PTRACE_ANY: a debugger may attach (kernel.yama.ptrace_scope=1 lets only parents). */
-    if (getenv("BB_PTRACE_ANY")) prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY, 0, 0, 0);
+    /* WOC_PTRACE_ANY: a debugger may attach (kernel.yama.ptrace_scope=1 lets only parents). */
+    if (getenv("WOC_PTRACE_ANY")) prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY, 0, 0, 0);
     struct sigaction sa = {0}; sa.sa_sigaction = fault; sa.sa_flags = SA_SIGINFO;
     sigemptyset(&sa.sa_mask);
     sigaction(SIGSEGV, &sa, NULL); sigaction(SIGILL, &sa, NULL); sigaction(SIGBUS, &sa, NULL);
@@ -400,16 +400,16 @@ int main(int argc, char **argv) {
     FILE *f = fopen(argv[1], "rb");
     if (!f) fail("cannot open boot file; run prepare.py first");
     char magic[8];
-    if (fread(magic, 1, 8, f) != 8 || (memcmp(magic, "BBPROBE1", 8) && memcmp(magic, "BBPROBE2", 8) && memcmp(magic,"BBPROBE3",8) && memcmp(magic,"BBPROBE4",8) && memcmp(magic,"BBPROBE5",8))) fail("bad boot file signature");
+    if (fread(magic, 1, 8, f) != 8 || (memcmp(magic, "WOCPROB1", 8) && memcmp(magic, "WOCPROB2", 8) && memcmp(magic,"WOCPROB3",8) && memcmp(magic,"WOCPROB4",8) && memcmp(magic,"WOCPROB5",8))) fail("bad boot file signature");
     uint64_t size = read64(f), entry = read64(f), ns = read64(f), nr = read64(f);
     import_count = read64(f);
-    uint64_t capabilities = memcmp(magic, "BBPROBE1", 8) ? read64(f) : 0;
+    uint64_t capabilities = memcmp(magic, "WOCPROB1", 8) ? read64(f) : 0;
     if (capabilities & ~UINT64_C(1)) fail("unknown runtime capabilities");
     runtime_start(strict_imports ? 0 : capabilities);
     if (!size || size > 512*1024*1024 || entry >= size || !ns || ns > 64 || nr > 1000000 || import_count > 100000)
         fail("boot file limits exceeded");
-    int multi=!memcmp(magic,"BBPROBE5",8);
-    int linked=!memcmp(magic,"BBPROBE3",8) || !memcmp(magic,"BBPROBE4",8) || multi;
+    int multi=!memcmp(magic,"WOCPROB5",8);
+    int linked=!memcmp(magic,"WOCPROB3",8) || !memcmp(magic,"WOCPROB4",8) || multi;
     int native_libc=linked && !strict_imports && (capabilities&1);
     uint64_t main_tls[4]={0};
     uint64_t nb=0,procparam=0;
@@ -417,7 +417,7 @@ int main(int argc, char **argv) {
     uint64_t *binding_kinds=calloc(import_count ? import_count : 1,sizeof(*binding_kinds));
     if (!bindings || !binding_kinds) fail("allocation failed");
     if (multi) {
-        /* BBPROBE5: procparam, eboot TLS, module table, bindings (link_modules.py). */
+        /* WOCPROB5: procparam, eboot TLS, module table, bindings (link_modules.py). */
         procparam=read64(f);
         for (int i=0;i<4;++i) main_tls[i]=read64(f);
         module_count=read64(f);
@@ -434,7 +434,7 @@ int main(int argc, char **argv) {
         x->base=read64(f); x->size=read64(f); x->init=read64(f);
         x->tls_address=read64(f); x->tls_memsz=read64(f); x->tls_filesz=read64(f); x->tls_module=2; nb=read64(f);
         procparam=read64(f);
-        if (!memcmp(magic,"BBPROBE4",8)) for (int i=0;i<4;++i) main_tls[i]=read64(f);
+        if (!memcmp(magic,"WOCPROB4",8)) for (int i=0;i<4;++i) main_tls[i]=read64(f);
     }
     if (linked) {
         if (main_tls[1]>main_tls[2] || main_tls[2]>1024*1024 || main_tls[0]>size ||
@@ -499,7 +499,7 @@ int main(int argc, char **argv) {
     if (fread(image, 1, size, f) != size || fgetc(f) != EOF) fail("incorrect memory image size");
     fclose(f);
     if (!cpu_only) {
-        char title[128]="bbport", serial[16]="UNKNOWN", sfo[4096];
+        char title[128]="wocport", serial[16]="UNKNOWN", sfo[4096];
         uint32_t attributes=0;
         snprintf(sfo,sizeof(sfo),"%s/sce_sys/param.sfo",app0 ? app0 : ".");
         sfo_value(sfo,"TITLE",title,sizeof(title),NULL);
@@ -507,10 +507,10 @@ int main(int argc, char **argv) {
         sfo_value(sfo,"ATTRIBUTE",NULL,0,&attributes);
         uint64_t sdk=0;
         if (procparam) memcpy(&sdk,image+procparam+16,8); /* procparam: size, magic, count, sdk_version */
-        BbGpuConfig gpu={title,serial,user_dir ? user_dir : "user",(uint32_t)sdk,attributes,1920,1080};
+        WocGpuConfig gpu={title,serial,user_dir ? user_dir : "user",(uint32_t)sdk,attributes,1920,1080};
         gpu_enabled=1; /* page tracking starts while the rasterizer registers guest memory */
-        if (bbgpu_init(&gpu)) fail("GPU initialization failed");
-        printf("GPU: window and Vulkan presenter ready; SDK 0x%08x, %u HLE symbols\n",(unsigned)sdk,bbgpu_symbol_count());
+        if (wocgpu_init(&gpu)) fail("GPU initialization failed");
+        printf("GPU: window and Vulkan presenter ready; SDK 0x%08x, %u HLE symbols\n",(unsigned)sdk,wocgpu_symbol_count());
     }
     unsigned char *traps = allocate(round_page((import_count + 1) * 32));
     unsigned char *data_traps = allocate((import_count + 1) * page_size);

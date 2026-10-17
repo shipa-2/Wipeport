@@ -34,7 +34,7 @@ class LinkTests(unittest.TestCase):
 
     def test_different_local_ids_bind_same_identity(self):
         data,report=self.run_link(*self.fixture())
-        self.assertEqual(data[:8],b'BBPROBE4')
+        self.assertEqual(data[:8],b'WOCPROB4')
         self.assertEqual(report['symbol_bindings'],[
             dict(import_name='fixture#libc',address='0x10010',kind=1)])
 

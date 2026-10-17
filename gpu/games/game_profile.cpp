@@ -19,9 +19,9 @@ std::atomic<const Profile*> active{nullptr};
 } // namespace
 
 void Select(const char* serial) {
-    const char* env = std::getenv("BB_GAME_PROFILE");
+    const char* env = std::getenv("WOC_GAME_PROFILE");
     if (env && std::strcmp(env, "none") == 0) {
-        std::printf("Game profile: none (BB_GAME_PROFILE=none): the game runs as an unknown one\n");
+        std::printf("Game profile: none (WOC_GAME_PROFILE=none): the game runs as an unknown one\n");
         return;
     }
     for (const Profile* profile : Profiles) {

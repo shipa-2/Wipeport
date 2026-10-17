@@ -17,12 +17,12 @@ VR dynamic resolution (vr_dynres). Each frame the game picks one of 16 viewports
 
 Flat render resolution (render_res=WxH). The game sizes its scene from the display size the
   system reports (sceVideoOutGetResolutionStatus, 0x7fa2df; copied at 0x643abb): the port reports
-  this size (BB_INTERNAL_WIDTH/HEIGHT) and scales the picture to the window. Up to 3839 pixels
+  this size (WOC_INTERNAL_WIDTH/HEIGHT) and scales the picture to the window. Up to 3839 pixels
   wide the scene renders at that size; from 3840 the game switches to its own 4K mode, which
   renders half the width and reconstructs the rest.
 
 Flat frame rate (fps_limit=N). The game runs at whatever rate the display flips at (its
-  logic follows the frame time); the port's frame limiter (BB_FPS_LIMIT) caps it.
+  logic follows the frame time); the port's frame limiter (WOC_FPS_LIMIT) caps it.
 
 VR frame rate (vr_fps). The game's tracker control thread (VRTrackerCntrTh) lets the render
   thread go on after a number of headset flips (the reprojection flips at 120 Hz) read from the
@@ -51,17 +51,17 @@ def _site(eboot, segments, site, data):
 
 
 def settings_from(settings, env):
-    """The VR options: bbport.ini keys, overridden by BB_VR_SCALE / BB_VR_DYNRES / BB_VR_FPS."""
+    """The VR options: wocport.ini keys, overridden by WOC_VR_SCALE / WOC_VR_DYNRES / WOC_VR_FPS."""
     def get(key, env_key, default):
         value = env.get(env_key)
         if value is None:
             value = settings.get(key, default)
         return str(value).strip()
     return {
-        'vr_scale': get('vr_scale', 'BB_VR_SCALE', ''),
-        'vr_dynres': get('vr_dynres', 'BB_VR_DYNRES', '1'),
-        'vr_fps': get('vr_fps', 'BB_VR_FPS', '60'),
-        'raw': env.get('BB_WIPEOUT_RAW', ''),
+        'vr_scale': get('vr_scale', 'WOC_VR_SCALE', ''),
+        'vr_dynres': get('vr_dynres', 'WOC_VR_DYNRES', '1'),
+        'vr_fps': get('vr_fps', 'WOC_VR_FPS', '60'),
+        'raw': env.get('WOC_WIPEOUT_RAW', ''),
     }
 
 
@@ -85,7 +85,7 @@ def writes(eboot, segments, options):
         code = bytes([0x41, 0xB6, VR_FPS[fps]]) + b'\x0f\x1f\x40\x00'
         out.append(_site(eboot, segments, VR_FLIP_INTERVAL, code))
         notes.append(f'VR {fps} FPS')
-    # BB_WIPEOUT_RAW=ADDR:OLDHEX:NEWHEX[,...]: experiments on the game's code.
+    # WOC_WIPEOUT_RAW=ADDR:OLDHEX:NEWHEX[,...]: experiments on the game's code.
     for item in filter(None, options.get('raw', '').split(',')):
         address, old, new = item.split(':')
         out.append(_site(eboot, segments, (int(address, 16), bytes.fromhex(old)), bytes.fromhex(new)))
@@ -94,16 +94,16 @@ def writes(eboot, segments, options):
 
 
 def environment(settings, env):
-    """Shell assignments for run.sh: the flat render size and frame limit (bbport.ini
+    """Shell assignments for run.sh: the flat render size and frame limit (wocport.ini
     render_res / fps_limit; the environment variables they set win)."""
     out = []
     res = settings.get('render_res', '').strip()
-    if res and not ('BB_INTERNAL_WIDTH' in env or 'BB_INTERNAL_HEIGHT' in env):
+    if res and not ('WOC_INTERNAL_WIDTH' in env or 'WOC_INTERNAL_HEIGHT' in env):
         width, height = (int(v) for v in res.lower().split('x'))
         if not (640 <= width <= 7680 and 360 <= height <= 4320):
             raise ValueError('render_res: 640x360 to 7680x4320')
-        out += [f'BB_INTERNAL_WIDTH={width}', f'BB_INTERNAL_HEIGHT={height}']
+        out += [f'WOC_INTERNAL_WIDTH={width}', f'WOC_INTERNAL_HEIGHT={height}']
     fps = settings.get('fps_limit', '').strip()
-    if fps and 'BB_FPS_LIMIT' not in env:
-        out.append(f'BB_FPS_LIMIT={int(fps)}')
+    if fps and 'WOC_FPS_LIMIT' not in env:
+        out.append(f'WOC_FPS_LIMIT={int(fps)}')
     return out

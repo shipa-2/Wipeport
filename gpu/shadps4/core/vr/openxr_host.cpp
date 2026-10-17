@@ -453,7 +453,7 @@ struct OpenXrHost::Impl {
     bool controllers_used{};
     bool controller_tracked{};
     bool view_reset_held{};
-    u32 sent_buttons{}; // bbport: no Libraries::Pad here (the C runtime's pad, src/runtime_pad.c)
+    u32 sent_buttons{}; // wocport: no Libraries::Pad here (the C runtime's pad, src/runtime_pad.c)
     std::array<int, 6> sent_axes{128, 128, 128, 128, 0, 0};
     bool sent_touch{};
     float sent_touch_x{0.5f};
@@ -1062,7 +1062,7 @@ struct OpenXrHost::Impl {
             // Only where they are is of interest (see UpdatePad).
             return;
         }
-        // bbport: the headset's controllers do not stand in for the gamepad (AstroQuest's input
+        // wocport: the headset's controllers do not stand in for the gamepad (AstroQuest's input
         // layer is not ported): the PC's gamepad plays, through the runtime's SDL pad.
         ApplyRumble(true);
     }
@@ -2340,7 +2340,7 @@ bool OpenXrHost::Connect() {
     impl->feed_head = EnvFlag("SHADPS4_XR_HEAD", true);
     // (A script that plays the game is the gamepad: nothing else has a say then.)
     const char* script = std::getenv("SHADPS4_INPUT_SCRIPT");
-    // bbport: the headset's controllers are not a gamepad here (see UpdateControllers).
+    // wocport: the headset's controllers are not a gamepad here (see UpdateControllers).
     impl->use_controllers = false;
     (void)script;
     impl->use_grips = impl->track_hands && EnvFlag("SHADPS4_XR_GRIPS", true);

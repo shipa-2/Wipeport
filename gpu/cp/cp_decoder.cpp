@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "cp_decoder.h"
 
-namespace BbCp {
+namespace WocCp {
 
 bool Decoder::ApplyRegisters(const Packet& packet) {
     const auto& body = packet.body;
@@ -226,4 +226,4 @@ void Decoder::Decode(std::span<const u32> buffer, Sink& sink, int depth) {
     }
 }
 
-} // namespace BbCp
+} // namespace WocCp

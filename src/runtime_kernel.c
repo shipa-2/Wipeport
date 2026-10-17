@@ -109,7 +109,7 @@ static ABI uint64_t tsc_frequency(void) {
 uint64_t runtime_process_time_us(void) { return process_time(); }
 uint64_t runtime_process_time_counter(void) { return process_time_counter(); }
 uint64_t runtime_tsc_frequency(void) { return tsc_frequency(); }
-/* bbport (frame stats): how often and how long the game sleeps (it polls GPU labels that way). */
+/* wocport (frame stats): how often and how long the game sleeps (it polls GPU labels that way). */
 static _Atomic uint64_t sleep_calls, sleep_total_ns;
 void runtime_sleep_stats(uint64_t *calls, uint64_t *ns) {
     *calls=atomic_exchange(&sleep_calls,0); *ns=atomic_exchange(&sleep_total_ns,0);
@@ -334,9 +334,9 @@ static ABI int32_t uuid_create(uint8_t *uuid) {
     uuid[8]=(uint8_t)((uuid[8]&0x3f)|0x80);
     return 0;
 }
-/* The base PS4 by default; BB_NEO=1 reports a PS4 Pro (the game's own Pro mode). */
+/* The base PS4 by default; WOC_NEO=1 reports a PS4 Pro (the game's own Pro mode). */
 static ABI int32_t is_neo_mode(void) {
-    const char *neo=getenv("BB_NEO");
+    const char *neo=getenv("WOC_NEO");
     return neo && !strcmp(neo,"1");
 }
 static ABI int32_t kernel_ok(void) { return 0; }
@@ -410,7 +410,7 @@ void runtime_thread_keys_cleanup(void) {}
 static void sample_start(void);
 static void sample_report(void);
 
-/* bbport (frame stats): time guest threads spend blocked in the runtime (condition variables,
+/* wocport (frame stats): time guest threads spend blocked in the runtime (condition variables,
  * mutexes, semaphores, sleeps), by thread and guest call site: the first return address into the
  * game's code on the stack. Shows where the game waits for the GPU (labels, frame pacing). */
 typedef struct { _Atomic uint64_t key; uint64_t site, site2, site3; int tid, kind; char name[16]; _Atomic uint64_t count, ns; } WaitSite;
@@ -433,7 +433,7 @@ static void guest_call_sites(uint64_t out[3]) {
 }
 void runtime_wait_note(int kind, uint64_t ns) {
     static int enabled=-1;
-    if (enabled<0) enabled=getenv("BB_FRAME_STATS")!=NULL;
+    if (enabled<0) enabled=getenv("WOC_FRAME_STATS")!=NULL;
     if (!enabled) return;
     if (!wait_tid) wait_tid=(int)syscall(SYS_gettid);
     uint64_t sites[3];
@@ -460,7 +460,7 @@ void runtime_wait_report(double frames) {
     }
     if (!n || frames<=0) return;
     static FILE *dump; static int dump_checked;
-    if (!dump_checked) { const char *path=getenv("BB_WAIT_LOG"); if (path && *path) dump=fopen(path,"w"); dump_checked=1; }
+    if (!dump_checked) { const char *path=getenv("WOC_WAIT_LOG"); if (path && *path) dump=fopen(path,"w"); dump_checked=1; }
     if (dump) {
         for (int i=0;i<n;++i)
             fprintf(dump,"%s %d %s %#lx %#lx %#lx %.2f %.3f\n", rows[i].w->name, rows[i].w->tid, kinds[rows[i].w->kind&3],
@@ -477,7 +477,7 @@ void runtime_wait_report(double frames) {
     printf("\n");
 }
 
-/* bbport BB_SAMPLE_THREAD=<name> (with frame stats): where that thread runs, sampled with SIGPROF
+/* wocport WOC_SAMPLE_THREAD=<name> (with frame stats): where that thread runs, sampled with SIGPROF
  * every 0.5 ms; reported with the wait profile. A thread that never blocks but waits for the GPU
  * shows up spinning in its polling loop. */
 static _Atomic uint64_t sample_keys[1024], sample_counts[1024];
@@ -535,7 +535,7 @@ static void *sampler_main(void *arg) {
 }
 static void sample_start(void) {
     static int started;
-    const char *name=getenv("BB_SAMPLE_THREAD");
+    const char *name=getenv("WOC_SAMPLE_THREAD");
     if (started || !name || !*name) return;
     started=1;
     struct sigaction action={0};
@@ -551,7 +551,7 @@ static void sample_report(void) {
     static int got_dumped;
     if (!got_dumped) {
         got_dumped=1;
-        const char *got=getenv("BB_DUMP_GOT"); /* a guest GOT slot (offset): which host function it calls */
+        const char *got=getenv("WOC_DUMP_GOT"); /* a guest GOT slot (offset): which host function it calls */
         if (got && *got) {
             const uint64_t target=*(const uint64_t *)(0x800000000ull+strtoull(got,NULL,0));
             Dl_info dl={0};

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// bbport cp: the PM4 packet format of the PS4's command processor (GCN, CIK generation), as the
+// wocport cp: the PM4 packet format of the PS4's command processor (GCN, CIK generation), as the
 // translator's own code: headers, opcodes, register banks. Only hardware facts live here; what a
 // packet does to the translator is the decoder's (cp_decoder.h).
 #pragma once
 
 #include <cstdint>
 
-namespace BbCp {
+namespace WocCp {
 
 using u32 = std::uint32_t;
 using u64 = std::uint64_t;
@@ -133,4 +133,4 @@ namespace Event {
 inline constexpr u32 SoVgtStreamoutFlush = 0x1F;
 } // namespace Event
 
-} // namespace BbCp
+} // namespace WocCp

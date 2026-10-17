@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// bbport: frame analyzer. Creating the file named by BB_CAPTURE_TRIGGER records the next full
+// wocport: frame analyzer. Creating the file named by WOC_CAPTURE_TRIGGER records the next full
 // frame: every render pass (targets, depth, draw count, shaders, sampled textures) and compute
 // dispatch, in order, plus the buffer that was presented. Input for placing a temporal
 // upscaler (scene color, depth, motion vectors, UI) in Bloodborne's frame.
@@ -44,9 +44,9 @@ public:
     /// Contents of a bound buffer (first 1 KiB), kept for small passes and a pass's first draw.
     static void Buffer(u64 stage_hash, u32 slot, VAddr address, const void* data, u64 size);
     static void Note(const char* text);
-    /// bbport: whether a frame is being recorded and BB_CAPTURE_IMAGES (guest addresses,
+    /// wocport: whether a frame is being recorded and WOC_CAPTURE_IMAGES (guest addresses,
     /// comma separated) names this render target: its contents are written after each draw
-    /// into it (Rasterizer::CaptureTargetContents), as <BB_CAPTURE_DIR>/dNNNN_<address>_...raw.
+    /// into it (Rasterizer::CaptureTargetContents), as <WOC_CAPTURE_DIR>/dNNNN_<address>_...raw.
     static bool WantsContents(VAddr address, u64 ps_hash = 0);
     static std::string ContentsPath(VAddr address, u32 width, u32 height, u32 bits);
 

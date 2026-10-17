@@ -5,18 +5,18 @@
 #include <cstdlib>
 #include <initializer_list>
 #include <unistd.h>
-#include "bbport_settings.h"
+#include "wocport_settings.h"
 
 int main() {
-    using namespace BbSettings;
-    char path[] = "/tmp/bbport-upscaler-test-XXXXXX";
+    using namespace WocSettings;
+    char path[] = "/tmp/wocport-upscaler-test-XXXXXX";
     const int fd = mkstemp(path);
     assert(fd >= 0);
     close(fd);
-    setenv("BB_CONFIG", path, 1);
-    unsetenv("BB_UPSCALER");
-    unsetenv("BB_UPSCALE_PRESET");
-    unsetenv("BB_RENDER_RES");
+    setenv("WOC_CONFIG", path, 1);
+    unsetenv("WOC_UPSCALER");
+    unsetenv("WOC_UPSCALE_PRESET");
+    unsetenv("WOC_RENDER_RES");
     auto& s = Get();
     s.upscaler = UpscalerTaa;
     s.preset = Performance;
@@ -59,7 +59,7 @@ int main() {
     s.upscaler = UpscalerFsr3;
     s.preset = Performance;
     assert(RenderPreset() == Performance && !ResolutionNeedsRestart());
-    setenv("BB_RENDER_RES", "1706x960", 1);
+    setenv("WOC_RENDER_RES", "1706x960", 1);
     assert(RenderPreset() == Quality && ResolutionNeedsRestart());
     s.preset = Quality;
     assert(!ResolutionNeedsRestart());
@@ -74,9 +74,9 @@ int main() {
     s.output_res = (output + 1) % OutputCount;
     assert(ResolutionNeedsRestart());
     s.output_res = output;
-    setenv("BB_RENDER_RES", "", 1);
+    setenv("WOC_RENDER_RES", "", 1);
     assert(!FixedRenderSession() && !ResolutionNeedsRestart());
-    unsetenv("BB_RENDER_RES");
+    unsetenv("WOC_RENDER_RES");
     std::remove(path);
     std::puts("Upscaler support: saved choices and FSR 3.1 fallback PASS");
 }

@@ -35,7 +35,7 @@ s64 NowNs() {
 
 bool IndirectGuard::Enabled() {
     static const bool enabled = [] {
-        const char* v = std::getenv("BB_INDIRECT_GUARD");
+        const char* v = std::getenv("WOC_INDIRECT_GUARD");
         return !(v && v[0] == '0');
     }();
     return enabled;
@@ -57,7 +57,7 @@ IndirectGuard::IndirectGuard(const Instance& instance_, Scheduler& scheduler_)
     for (u32 i = 0; i < 3; ++i) {
         max_count[i] = limits.maxComputeWorkGroupCount[i];
     }
-    const char* max = std::getenv("BB_INDIRECT_GUARD_MAX");
+    const char* max = std::getenv("WOC_INDIRECT_GUARD_MAX");
     max_total = max && *max ? static_cast<u32>(std::strtoul(max, nullptr, 0)) : 1u << 22;
 
     std::array<vk::DescriptorSetLayoutBinding, 3> bindings{};
@@ -158,7 +158,7 @@ void IndirectGuard::Report() {
     const u32 before = reported.exchange(count, std::memory_order_relaxed);
     if (count != before) {
         std::printf("Indirect dispatches: %u skipped in all (garbage group counts, the last "
-                    "%ux%ux%u; BB_INDIRECT_GUARD)\n",
+                    "%ux%ux%u; WOC_INDIRECT_GUARD)\n",
                     count, s->last[0], s->last[1], s->last[2]);
     }
 }

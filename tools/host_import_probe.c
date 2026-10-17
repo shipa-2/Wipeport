@@ -6,7 +6,7 @@
  * into a staging buffer, then a GPU copy), whether CPU writes through the other mapping are
  * seen without extra steps, and what mprotect on the guest view costs the imported memory.
  *
- * Usage: bb-host-import-probe [MiB]   (default 512)
+ * Usage: woc-host-import-probe [MiB]   (default 512)
  */
 #define _GNU_SOURCE
 #include <stdint.h>
@@ -320,7 +320,7 @@ static void dmabuf_test(uint64_t size, Buffer local, Buffer readback) {
 
     uint8_t* anon = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     cpu_speed("ordinary memory", anon, size);
-    const int shm = memfd_create("bb-probe-speed", MFD_CLOEXEC);
+    const int shm = memfd_create("woc-probe-speed", MFD_CLOEXEC);
     if (shm >= 0 && !ftruncate(shm, (off_t)size)) {
         uint8_t* view = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, shm, 0);
         if (view != MAP_FAILED) cpu_speed("memfd (the guest memory now)", view, size);
@@ -393,7 +393,7 @@ static void dmabuf_test(uint64_t size, Buffer local, Buffer readback) {
     printf("  write faults caught after mprotect: %d of 256\n", (int)write_faults);
 
     /* File reads into the guest view (the game loads its data with read()). */
-    char path[] = "/tmp/bb-probe-file-XXXXXX";
+    char path[] = "/tmp/woc-probe-file-XXXXXX";
     const int file = mkstemp(path);
     static char data[1 << 20];
     memset(data, 0x3c, sizeof(data));
@@ -412,7 +412,7 @@ int main(int argc, char** argv) {
     init();
 
     /* Guest memory as the runtime makes it: a memfd, a backing view, a guest view. */
-    const int fd = memfd_create("bb-probe-guest", MFD_CLOEXEC);
+    const int fd = memfd_create("woc-probe-guest", MFD_CLOEXEC);
     if (fd < 0 || ftruncate(fd, (off_t)size)) {
         perror("memfd");
         return 1;

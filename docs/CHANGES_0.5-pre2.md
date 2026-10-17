@@ -10,7 +10,7 @@ memory and GPU command translation path. Changes are listed relative to
   the layer binds chunks of game memory directly and keeps frequently used data in separate VRAM
   buffers. It does not use `vkQueueBindSparse`. The launcher now exposes the mode on all GPU
   vendors; the startup capability check is retained. AMD still selects the sparse arena by
-  default within this mode; `BB_LAYER_MEMORY=1` selects the new module manually.
+  default within this mode; `WOC_LAYER_MEMORY=1` selects the new module manually.
 - **Memory coherence fixes.** CPU writes to mirrored blocks are tracked selectively. Buffer
   bindings and command-processor copies use the current GPU data, CPU writes invalidate stale
   GPU ownership, and mixed ranges can use refreshed VRAM fringes. Promotion respects the VRAM
@@ -18,11 +18,11 @@ memory and GPU command translation path. Changes are listed relative to
 - **Original GPU copy shader enabled by default in the new model.** The game's copy shader is
   translated to SPIR-V and reads its copy list on the GPU. Its writes update both the current
   GPU view and game memory, keeping VRAM mirrors and CPU consumers consistent.
-  `BB_COPY_SHADER_NATIVE=0` retains the HLE path for comparison.
+  `WOC_COPY_SHADER_NATIVE=0` retains the HLE path for comparison.
 - **Portable GPU completion labels.** Supported EOP/EOS/RELEASE_MEM labels can be written by
   standard Vulkan commands on GPUs without `VK_AMD_buffer_marker`. Prior GPU results become
   visible before the completion label; the AMD fast path remains available. The portable path
-  can be forced for testing with `BB_GPU_LABELS_PORTABLE=1`.
+  can be forced for testing with `WOC_GPU_LABELS_PORTABLE=1`.
 - **Synchronization and bounds fixes.** Corrected update/inline-data stage dependencies and
   index-buffer read tracking. Paged buffer accesses reject invalid ranges before accessing the
   page table. Vulkan initialization also enables the required surface extension for headless
@@ -36,8 +36,8 @@ memory and GPU command translation path. Changes are listed relative to
   false failures when a single submission contains no draws.
 
 **How to test:** enable *New memory and translation model* in the launcher, or set
-`BB_PC_MODEL=1`. The experimental mode remains **off by default**. For testing the new module
-on AMD, also set `BB_LAYER_MEMORY=1`.
+`WOC_PC_MODEL=1`. The experimental mode remains **off by default**. For testing the new module
+on AMD, also set `WOC_LAYER_MEMORY=1`.
 
 **Validation and limits:** runtime tests, packaged Vulkan-driver discovery tests, the new GPU
 tests and all eight in-game PM4 checks passed. GPU and AppImage checks used an RX 7800 XT/RADV;
@@ -61,7 +61,7 @@ are not bundled. `SHA256SUMS` accompanies the download.
   в отдельных буферах VRAM. `vkQueueBindSparse` не используется. Переключатель в лаунчере
   доступен для всех производителей GPU, стартовая проверка возможностей драйвера сохранена.
   На AMD внутри нового режима по умолчанию остаётся sparse-арена; новый модуль можно выбрать
-  через `BB_LAYER_MEMORY=1`.
+  через `WOC_LAYER_MEMORY=1`.
 - **Согласование памяти CPU и GPU.** Записи CPU в блоки с зеркалами отслеживаются выборочно.
   Привязки буферов и копии командного процессора используют актуальные данные GPU; новые записи
   CPU снимают устаревшие пометки GPU. Смешанные диапазоны могут использовать обновляемые края
@@ -70,11 +70,11 @@ are not bundled. `SHA256SUMS` accompanies the download.
 - **Оригинальный GPU copy shader по умолчанию в новой модели.** Шейдер игры транслируется
   в SPIR-V и сам читает список копий на видеокарте. Результат записывается и в актуальное
   GPU-представление, и в память игры: зеркала VRAM и потребители на CPU видят согласованные
-  данные. `BB_COPY_SHADER_NATIVE=0` оставляет HLE для сравнения.
+  данные. `WOC_COPY_SHADER_NATIVE=0` оставляет HLE для сравнения.
 - **Переносимые метки завершения GPU.** Поддерживаемые метки EOP/EOS/RELEASE_MEM записываются
   стандартными командами Vulkan на GPU без `VK_AMD_buffer_marker`. Предшествующие результаты
   GPU становятся видимыми до метки завершения. Быстрый путь AMD сохранён;
-  `BB_GPU_LABELS_PORTABLE=1` принудительно выбирает переносимый путь для проверки.
+  `WOC_GPU_LABELS_PORTABLE=1` принудительно выбирает переносимый путь для проверки.
 - **Синхронизация и границы доступа.** Исправлены зависимости update/inline data и учёт чтения
   index buffer. Недопустимые диапазоны отклоняются до обращения к таблице страниц. Для
   headless-проверки Vulkan включается необходимое расширение surface.
@@ -88,8 +88,8 @@ are not bundled. `SHA256SUMS` accompanies the download.
   не давала ложный FAIL.
 
 **Как проверить:** включить *Новую модель памяти и трансляции* в лаунчере или задать
-`BB_PC_MODEL=1`. Экспериментальный режим по умолчанию **выключен**. Для нового модуля на AMD
-также нужен `BB_LAYER_MEMORY=1`.
+`WOC_PC_MODEL=1`. Экспериментальный режим по умолчанию **выключен**. Для нового модуля на AMD
+также нужен `WOC_LAYER_MEMORY=1`.
 
 **Проверки и ограничения:** пройдены тесты рантайма, поиска Vulkan-драйвера в пакете, новые
 GPU-тесты и все восемь PM4-проверок в игре. GPU и AppImage проверялись на RX 7800 XT/RADV;

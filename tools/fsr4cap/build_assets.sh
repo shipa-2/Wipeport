@@ -10,16 +10,16 @@
 #      not needs the loader (given, or amd_fidelityfx_loader_dx12.dll / OptiScaler's
 #      amd_fidelityfx_dx12.dll next to it or one folder up);
 #   1. builds dxil-spirv (pinned commit + dxil-spirv-class-bindings.patch) and fsr4cap.exe
-#      (MinGW), unless BB_FSR4CAP_TOOLS names a folder holding both (the AppImage);
+#      (MinGW), unless WOC_FSR4CAP_TOOLS names a folder holding both (the AppImage);
 #   2. runs fsr4cap.exe under Proton for every output size class and quality ratio, recording the
 #      D3D12 frames (capture_all.sh; proton.sh: umu-run, or Steam's runtime of that Proton);
 #   3. extract.py translates them, checks the replay rules and writes the set; it replaces the
 #      previous one only once complete;
 #   4. with VERIFY=1, verify.sh compares the replay with the DLL byte by byte.
-# BB_FSR411_OUT: where the set goes (default fsr4_411 in the tree); BB_FSR4CAP_WORK: the work
-# folder (default out/fsr4cap; it must be under $HOME for Steam's runtime); BB_FSR4CAP_CLEAN=1:
+# WOC_FSR411_OUT: where the set goes (default fsr4_411 in the tree); WOC_FSR4CAP_WORK: the work
+# folder (default out/fsr4cap; it must be under $HOME for Steam's runtime); WOC_FSR4CAP_CLEAN=1:
 # the work folder (Proton prefix ~300 MB, captures) is removed after a successful build.
-# Without BB_FSR4CAP_TOOLS it needs x86_64-w64-mingw32-gcc, cmake, ninja, python3,
+# Without WOC_FSR4CAP_TOOLS it needs x86_64-w64-mingw32-gcc, cmake, ninja, python3,
 # spirv-dis/spirv-as, git (or nix-shell) and network for dxil-spirv; with it, python3 and
 # spirv-dis/spirv-as only. Always: a Proton build that starts the DLL's FSR 4.1 (PROTONPATH, or
 # the first that does of GE-Proton 10+, Proton-CachyOS, Proton - Experimental: capture_all.sh).
@@ -33,12 +33,12 @@ root=$(cd -- "$here/../.." && pwd)
 cd -- "$root"
 upscaler=$(realpath "${1:?upscaler DLL}")
 loader=${2:+$(realpath "$2")}
-work=$(realpath -m "${BB_FSR4CAP_WORK:-$root/out/fsr4cap}")
-out=$(realpath -m "${BB_FSR411_OUT:-$root/fsr4_411}")
-tools=${BB_FSR4CAP_TOOLS:-}
+work=$(realpath -m "${WOC_FSR4CAP_WORK:-$root/out/fsr4cap}")
+out=$(realpath -m "${WOC_FSR411_OUT:-$root/fsr4_411}")
+tools=${WOC_FSR4CAP_TOOLS:-}
 python=${PYTHON:-python3}
 
-# Before anything long: is it a DLL bbport can replay, and where is its loader? (Without Python
+# Before anything long: is it a DLL wocport can replay, and where is its loader? (Without Python
 # yet, after nix-shell below.)
 check_dll() {
     local status=0 info
@@ -46,9 +46,9 @@ check_dll() {
     echo "$info" | grep -v '^LOADER='
     [[ $status == 0 ]] || exit "$status"
     loader=${loader:-$(echo "$info" | sed -n 's/^LOADER=//p')}
-    export BB_FSR4CAP_CHECKED=1
+    export WOC_FSR4CAP_CHECKED=1
 }
-if [[ -z ${BB_FSR4CAP_CHECKED:-} ]] && command -v "$python" >/dev/null; then
+if [[ -z ${WOC_FSR4CAP_CHECKED:-} ]] && command -v "$python" >/dev/null; then
     check_dll
 fi
 
@@ -62,10 +62,10 @@ missing=()
 for tool in "${needed[@]}"; do
     command -v "$tool" >/dev/null || missing+=("$tool")
 done
-if [[ ${#missing[@]} -ne 0 && -z ${BB_FSR4CAP_SHELL:-} ]] && command -v nix-shell >/dev/null; then
+if [[ ${#missing[@]} -ne 0 && -z ${WOC_FSR4CAP_SHELL:-} ]] && command -v nix-shell >/dev/null; then
     nixpkgs=()
     nix-instantiate --find-file nixpkgs >/dev/null 2>&1 || nixpkgs=(-I nixpkgs=channel:nixos-unstable)
-    exec env BB_FSR4CAP_SHELL=1 nix-shell "${nixpkgs[@]}" -p pkgsCross.mingwW64.buildPackages.gcc cmake \
+    exec env WOC_FSR4CAP_SHELL=1 nix-shell "${nixpkgs[@]}" -p pkgsCross.mingwW64.buildPackages.gcc cmake \
         ninja gcc python3 spirv-tools git umu-launcher \
         --run "bash $(printf %q "$0") $(printf %q "$upscaler") ${loader:+$(printf %q "$loader")}"
 fi
@@ -77,7 +77,7 @@ if [[ ${#missing[@]} -ne 0 ]]; then
     echo "(umu-launcher is optional: without it Proton runs in Steam's own runtime.)" >&2
     exit 4
 fi
-if [[ -z ${BB_FSR4CAP_CHECKED:-} ]]; then
+if [[ -z ${WOC_FSR4CAP_CHECKED:-} ]]; then
     check_dll
 fi
 mkdir -p "$work"
@@ -139,7 +139,7 @@ else
     mv "$out.new" "$out"
     rm -rf "$out.old"
 fi
-if [[ ${BB_FSR4CAP_CLEAN:-0} == 1 ]]; then
+if [[ ${WOC_FSR4CAP_CLEAN:-0} == 1 ]]; then
     rm -rf "$work"
 fi
-echo "FSR 4.1.1 assets in $out (bbport.ini: upscaler=fsr411)"
+echo "FSR 4.1.1 assets in $out (wocport.ini: upscaler=fsr411)"

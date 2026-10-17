@@ -48,7 +48,7 @@ ImageInfo::ImageInfo(const Libraries::VideoOut::BufferAttributeGroup& group,
     pitch = attrib.tiling_mode == TilingMode::Linear ? size.width : (size.width + 127) & (~127);
     num_bits = attrib.pixel_format != VideoOutFormat::A16R16G16B16Float ? 32 : 64;
     ASSERT(num_bits == 32);
-    // bbport: a PS4 Pro title renders its tiled display buffers with the Pro's alternate tile
+    // wocport: a PS4 Pro title renders its tiled display buffers with the Pro's alternate tile
     // layout (CB_COLOR_INFO.ALT_TILE_MODE); the buffer is the same memory, sized alike.
     alt_tile = props.is_tiled && Libraries::Kernel::sceKernelIsNeoMode();
 
@@ -183,7 +183,7 @@ void ImageInfo::UpdateSize() {
         } else {
             // Every tiled array mode (1D/2D/3D, thin/thick/xthick, PRT or not) groups
             // GetMicroTileThickness() consecutive depth slices per tile; the slice count (depth x
-            // layers) is padded to it once, below. bbport (upstream #5196): a mip smaller than a
+            // layers) is padded to it once, below. wocport (upstream #5196): a mip smaller than a
             // macro tile is stored 1D (micro tiled, at most 4 thick), as the hardware does.
             const u32 thickness = AmdGpu::GetMicroTileThickness(array_mode);
             const bool macro = AmdGpu::IsMacroTiled(array_mode);

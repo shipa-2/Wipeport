@@ -6,7 +6,7 @@
 #include <string>
 #include <atomic>
 #include <chrono>
-#include "bbport_toggles.h"
+#include "wocport_toggles.h"
 
 #include <condition_variable>
 #include <mutex>
@@ -90,15 +90,15 @@ public:
                  PageManager& tracker);
     ~TextureCache();
 
-    /// bbport (diagnostics): the images over [addr, addr + size), described briefly.
+    /// wocport (diagnostics): the images over [addr, addr + size), described briefly.
     std::string DescribeImagesIn(VAddr addr, u64 size);
 
-    /// bbport: changes whenever an image is registered or unregistered.
+    /// wocport: changes whenever an image is registered or unregistered.
     [[nodiscard]] u64 RegistryGeneration() const noexcept {
         return registry_generation.load(std::memory_order_acquire);
     }
 
-    /// bbport: FindImage's access tick for an image found by a memoized lookup. The LRU touch
+    /// wocport: FindImage's access tick for an image found by a memoized lookup. The LRU touch
     /// FindImage also does happens in UpdateImage (FindTexture), which every binding reaches.
     void MarkFound(ImageId image_id) {
         slot_images[image_id].tick_accessed_last = scheduler.CurrentTick();
@@ -126,13 +126,13 @@ public:
     /// Retrieves image whose address matches provided
     [[nodiscard]] ImageId FindImageFromRange(VAddr address, size_t size, bool ensure_valid = true);
 
-    /// bbport: a render target read as a constant or storage buffer: its contents go into the
+    /// wocport: a render target read as a constant or storage buffer: its contents go into the
     /// game's memory first (DownloadImageMemory; Rasterizer::BindBuffers).
     void DownloadForBufferRead(ImageId image_id) {
         DownloadImageMemory(image_id);
     }
 
-    /// bbport: a FindView result remembered by the caller for the same image and view info.
+    /// wocport: a FindView result remembered by the caller for the same image and view info.
     struct ViewMemo {
         ImageId image_id{};
         const void* backing = nullptr;
@@ -151,7 +151,7 @@ public:
     /// Retrieves the depth target with specified properties
     [[nodiscard]] ImageView& FindDepthTarget(ImageId image_id, const ImageDesc& desc);
 
-    /// bbport: whether UpdateImage has nothing to do for this image (its fast path).
+    /// wocport: whether UpdateImage has nothing to do for this image (its fast path).
     [[nodiscard]] bool IsUpToDate(ImageId image_id) const {
         const Image& image = slot_images[image_id];
         const u32 flags = std::atomic_ref<const u32>(reinterpret_cast<const u32&>(image.flags))
@@ -165,11 +165,11 @@ public:
 
     /// Updates image contents if it was modified by CPU.
     void UpdateImage(ImageId image_id) {
-        // bbport: a clean image already tracked and touched in this GC period needs nothing.
+        // wocport: a clean image already tracked and touched in this GC period needs nothing.
         // Every texture binding comes here; the mutex (shared with the fault handlers of the
         // guest threads) was ~3% of the GPU thread. Flags are read atomically: an invalidation
         // racing with this check races the same way with the locked path.
-        if (!BbToggle::Disabled(BbToggle::UpdateImageFastPath)) {
+        if (!WocToggle::Disabled(WocToggle::UpdateImageFastPath)) {
             const Image& image = slot_images[image_id];
             const u32 flags = std::atomic_ref<const u32>(reinterpret_cast<const u32&>(image.flags))
                                   .load(std::memory_order_acquire);
@@ -207,7 +207,7 @@ public:
     void WatchImage(const Image& image, const char* what);
 
     /// Retrieves the sampler that matches the provided S# descriptor.
-    /// extra_lod_bias: bbport, added to the S#'s bias (reduced scene rendering).
+    /// extra_lod_bias: wocport, added to the S#'s bias (reduced scene rendering).
     [[nodiscard]] vk::Sampler GetSampler(const AmdGpu::Sampler& sampler,
                                          AmdGpu::BorderColorBuffer border_color_base,
                                          bool is_depth, float extra_lod_bias = 0.0f);
@@ -297,7 +297,7 @@ public:
     /// Runs the garbage collector.
     void RunGarbageCollector();
 
-    /// bbport: VRAM ran out (BufferCache::AllocateResidency, any thread): for the next 30 s the
+    /// wocport: VRAM ran out (BufferCache::AllocateResidency, any thread): for the next 30 s the
     /// collector evicts by submissions under pressure again, as before 0.5, instead of keeping
     /// textures unused for seconds.
     static void NoteVramShort();
@@ -416,9 +416,9 @@ private:
     tsl::robin_map<u64, Sampler> samplers;
     std::unordered_set<ImageId> download_images;
     u64 total_used_memory = 0;
-    u64 gc_evictions = 0, gc_downloads = 0; ///< bbport: pressure report
+    u64 gc_evictions = 0, gc_downloads = 0; ///< wocport: pressure report
     std::chrono::steady_clock::time_point gc_report_time{};
-    /// bbport: gc_tick at each of the last 64 seconds (GarbageCollectImages).
+    /// wocport: gc_tick at each of the last 64 seconds (GarbageCollectImages).
     std::array<u64, 64> gc_tick_at_second{};
     u64 gc_second = 0;
     u64 trigger_gc_memory = 0;
@@ -435,7 +435,7 @@ private:
     PageTable page_table;
     std::mutex mutex;
     static inline std::atomic<u64> vram_short_until{0}; ///< steady seconds (NoteVramShort)
-    // bbport: FindImage results for unchanged image registrations (guarded by `mutex`).
+    // wocport: FindImage results for unchanged image registrations (guarded by `mutex`).
     struct FindImageCacheEntry {
         VAddr address = 0;
         u64 size = 0;

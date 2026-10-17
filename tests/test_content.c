@@ -7,7 +7,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 /* The user folder add-ons are listed from (runtime_file.c in the game): a temporary one here. */
-static char user_dir[64]="/tmp/bbport-content-test-XXXXXX";
+static char user_dir[64]="/tmp/wocport-content-test-XXXXXX";
 const char *runtime_file_user_dir(void) { return user_dir; }
 typedef int32_t (ABI *Module)(uint16_t);
 typedef int32_t (ABI *Init)(const void *,void *);

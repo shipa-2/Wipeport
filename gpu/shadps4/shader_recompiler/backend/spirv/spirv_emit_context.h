@@ -252,7 +252,7 @@ public:
     Id vertex_index{};
     Id instance_id{};
     Id push_data_block{};
-    // bbport: object motion vectors (runtime_info.h, MotionVectors).
+    // wocport: object motion vectors (runtime_info.h, MotionVectors).
     Id motion_out_cur{};
     Id motion_out_prev{};
     Id motion_in_cur{};
@@ -350,7 +350,7 @@ public:
         BufferType buffer_type;
         std::array<Id, u32(PointerSize::NumClass)> offsets;
         std::array<BufferSpv, u32(PointerType::NumAlias)> aliases;
-        /// bbport BB_LAYER_MEMORY: reached through the page table (IsPagedBuffer); the descriptor
+        /// wocport WOC_LAYER_MEMORY: reached through the page table (IsPagedBuffer); the descriptor
         /// holds {guest address lo, hi, size, write-through, trash address lo, hi} (PagedPointer).
         bool paged = false;
 
@@ -364,7 +364,7 @@ public:
             return self.offsets[u32(size)];
         }
     };
-    /// bbport BB_LAYER_MEMORY: an access of `access_bytes` at `byte_offset` of a paged buffer:
+    /// wocport WOC_LAYER_MEMORY: an access of `access_bytes` at `byte_offset` of a paged buffer:
     /// the guest address translated through the page table. `guard` is false out of the
     /// buffer's range or on an unmapped page; the pointer then goes to a trash area (loads
     /// select zero with the guard, stores and atomics land there).

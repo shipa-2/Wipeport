@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// bbport: the game's occlusion queries (ZPASS_DONE events) as Vulkan occlusion queries.
+// wocport: the game's occlusion queries (ZPASS_DONE events) as Vulkan occlusion queries.
 //
 // On the PS4 every depth block keeps a running count of the samples that pass the depth test; a
 // ZPASS_DONE event has each block write its count, 16 bytes apart, with the valid bit (63). The
@@ -49,15 +49,15 @@ public:
     /// Before a label (an end-of-pipe write the CPU may poll): the events recorded before it are
     /// written first, as on the PS4, where the counters land in stream order ahead of later
     /// labels. Ends the render pass when one is open (copies and dispatches are outside them).
-    /// BB_OCCLUSION_LABEL_ORDER=0: labels may go ahead (statistics only).
+    /// WOC_OCCLUSION_LABEL_ORDER=0: labels may go ahead (statistics only).
     void WriteBeforeLabel();
 
-    /// Events so far (BB_PM4_SELFTEST and the frame stats).
+    /// Events so far (WOC_PM4_SELFTEST and the frame stats).
     u64 Events() const noexcept {
         return events;
     }
 
-    /// BB_OCCLUSION_READ_TRACE=1 (diagnostics): a page with counters is no access after an event
+    /// WOC_OCCLUSION_READ_TRACE=1 (diagnostics): a page with counters is no access after an event
     /// there until the game's first access, which comes here from the fault handler (any thread):
     /// whether the event's results were on the CPU by then. False: not such a page.
     bool OnAccess(VAddr address, u64 rip, bool write, bool gpu_thread);
@@ -74,9 +74,9 @@ private:
         u32 pairs;
         u64 upto; ///< segments ended before the event
         VAddr guest_address = 0; ///< statistics (written_at)
-        u64 id = 0;              ///< the event's number (BB_OCCLUSION_READ_TRACE)
+        u64 id = 0;              ///< the event's number (WOC_OCCLUSION_READ_TRACE)
     };
-    /// An event on a page watched for the game's first access (BB_OCCLUSION_READ_TRACE).
+    /// An event on a page watched for the game's first access (WOC_OCCLUSION_READ_TRACE).
     struct Watched {
         u64 id;
         u64 resolve_tick; ///< of the resolve writing its results; 0 while not recorded
@@ -119,7 +119,7 @@ private:
     std::unordered_map<u64, u64> written_at; ///< counter address -> tick of the resolve writing it
     u64 reused = 0, reused_late = 0;
     u64 queries_hidden = 0, queries_passed = 0, queries_invalid = 0; ///< statistics
-    /// BB_OCCLUSION_READ_TRACE: watched pages (page -> events since its last access) and what the
+    /// WOC_OCCLUSION_READ_TRACE: watched pages (page -> events since its last access) and what the
     /// accesses found: results not recorded yet, recorded but the GPU not there, on the CPU.
     std::mutex watch_mutex;
     std::unordered_map<u64, std::vector<Watched>> watched;

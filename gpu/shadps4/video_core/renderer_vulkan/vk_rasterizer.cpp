@@ -6,14 +6,14 @@
 #include <unordered_set>
 #include <xxhash.h>
 #include "video_core/renderer_vulkan/ui_composition.h"
-#include "bbport_timeline.h"
-#include "bbport_sections.h"
+#include "wocport_timeline.h"
+#include "wocport_sections.h"
 #include "game_profile.h"
-#include "bbport_ce_stats.h"
-#include "bbport_toggles.h"
-#include "bbport_write_log.h"
-#include "bbport_free_check.h"
-#include "bbport_guest_memory.h"
+#include "wocport_ce_stats.h"
+#include "wocport_toggles.h"
+#include "wocport_write_log.h"
+#include "wocport_free_check.h"
+#include "wocport_guest_memory.h"
 #include "video_core/renderer_vulkan/vk_frame_capture.h"
 #include "common/hash.h"
 #include "common/debug.h"
@@ -29,9 +29,9 @@
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_pipeline_cache.h"
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
-#include <vk_mem_alloc.h> // bbport: CaptureTargetContents
+#include <vk_mem_alloc.h> // wocport: CaptureTargetContents
 #include "video_core/renderer_vulkan/vk_gpu_profiler.h"
-#include "bbport_threads.h"
+#include "wocport_threads.h"
 #include "video_core/renderer_vulkan/vk_runtime.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/renderer_vulkan/vk_shader_hle.h"
@@ -76,7 +76,7 @@ Rasterizer::Rasterizer(const Instance& instance_, Scheduler& scheduler_, Runtime
     if (!EmulatorSettings.IsNullGPU()) {
         liverpool->BindRasterizer(this);
     }
-    BbGuestMemory::Install(instance); // bbport: before the runtime maps direct memory
+    WocGuestMemory::Install(instance); // wocport: before the runtime maps direct memory
     memory->SetRasterizer(this);
 
     GpuProfiler::Init(instance, scheduler);
@@ -84,7 +84,7 @@ Rasterizer::Rasterizer(const Instance& instance_, Scheduler& scheduler_, Runtime
         constant_ring = std::make_unique<ConstantRing>(instance, scheduler);
         draw_pipe = std::make_unique<DrawPipe>(&RunDrawPacket, this);
     }
-    // bbport: this thread joins the texture binding helper before it changes image state.
+    // wocport: this thread joins the texture binding helper before it changes image state.
     runtime.SetImageAccessHook(&JoinBindHelper, this);
     scheduler.SetSubmitCallback([this](Vulkan::SubmitInfo& info) {
         runtime.FlushBarriers();
@@ -96,11 +96,11 @@ Rasterizer::~Rasterizer() = default;
 
 bool Rasterizer::HonestLabels() {
     static const bool on = [] {
-        const char* env = std::getenv("BB_HONEST_LABELS");
+        const char* env = std::getenv("WOC_HONEST_LABELS");
         const bool enabled = (env && env[0] == '1') || VideoCore::GuestInPlace();
         if (enabled) {
             std::printf("GPU: fences written when the GPU has finished the work before them "
-                        "(BB_HONEST_LABELS=1)\n");
+                        "(WOC_HONEST_LABELS=1)\n");
         }
         return enabled;
     }();
@@ -180,7 +180,7 @@ void Rasterizer::RequestSignalFlush() {
                 self.Flush();
             }
         },
-        &none, 0, BbToggle::PipelinedTasks, false);
+        &none, 0, WocToggle::PipelinedTasks, false);
 }
 
 bool Rasterizer::SignalsPublished(u64 position) const {
@@ -210,13 +210,13 @@ bool Rasterizer::WriteGuestMemory(VAddr address, const void* data, u32 size) {
 
 bool Rasterizer::WriteDataOnGpu(VAddr address, const void* data, u32 size) {
     static const bool enabled = [] {
-        const char* env = std::getenv("BB_GPU_COMMAND_WRITES");
+        const char* env = std::getenv("WOC_GPU_COMMAND_WRITES");
         return !env || env[0] != '0';
     }();
     if (!enabled || !VideoCore::GuestInPlace() || size == 0 || (address | size) % 4 != 0) {
         return false;
     }
-    // bbport BB_LAYER_MEMORY: a range whole in a mirror is written there too (asked first: the
+    // wocport WOC_LAYER_MEMORY: a range whole in a mirror is written there too (asked first: the
     // target demotes it otherwise).
     const auto mirror = buffer_cache.CommandWriteMirror(address, size);
     const auto target = buffer_cache.CommandWriteTarget(address, size);
@@ -236,19 +236,19 @@ bool Rasterizer::WriteDataOnGpu(VAddr address, const void* data, u32 size) {
 }
 
 bool Rasterizer::OcclusionTranslated() {
-    // BB_OCCLUSION_QUERIES=1 (opt-in): Vulkan occlusion queries. Else the counters stay the fixed
+    // WOC_OCCLUSION_QUERIES=1 (opt-in): Vulkan occlusion queries. Else the counters stay the fixed
     // sequence written when decoded (everything visible, as in the 0.3 model). With an upscaler
     // the scene is drawn smaller and jittered: a light's sub-pixel test shape passed samples in
     // one frame and none in the next, and its glow flashed grey over the whole frame (a lamp in
     // the cathedral at 640x360). Counting has to become stable against that first.
-    // The PM4 self-test (BB_PM4_SELFTEST=1) checks them, so it turns them on.
+    // The PM4 self-test (WOC_PM4_SELFTEST=1) checks them, so it turns them on.
     static const bool enabled = [] {
-        const char* env = std::getenv("BB_OCCLUSION_QUERIES");
-        const char* selftest = std::getenv("BB_PM4_SELFTEST");
+        const char* env = std::getenv("WOC_OCCLUSION_QUERIES");
+        const char* selftest = std::getenv("WOC_PM4_SELFTEST");
         return (env && env[0] == '1') || (selftest && selftest[0] == '1');
     }();
-    // Experiment bit 4 of BB_TOGGLE_FILE: the fixed sequence while the game runs (A/B).
-    return enabled && VideoCore::GuestInPlace() && !BbToggle::Experiment(4);
+    // Experiment bit 4 of WOC_TOGGLE_FILE: the fixed sequence while the game runs (A/B).
+    return enabled && VideoCore::GuestInPlace() && !WocToggle::Experiment(4);
 }
 
 bool Rasterizer::OcclusionEvent(VAddr address, u32 pairs) {
@@ -278,9 +278,9 @@ bool Rasterizer::OnVramDataAccess(VAddr addr, bool assume_locks) {
 }
 
 bool Rasterizer::WriteTimestampOnGpu(VAddr address, bool end_of_pipe) {
-    // BB_GPU_TIMESTAMPS=0: written by the CPU (EOP: once the GPU is done; COPY_DATA: when decoded).
+    // WOC_GPU_TIMESTAMPS=0: written by the CPU (EOP: once the GPU is done; COPY_DATA: when decoded).
     static const bool enabled = [] {
-        const char* env = std::getenv("BB_GPU_TIMESTAMPS");
+        const char* env = std::getenv("WOC_GPU_TIMESTAMPS");
         return !(env && env[0] == '0');
     }();
     if (!enabled || !VideoCore::GuestInPlace() || address % 8 != 0) {
@@ -294,11 +294,11 @@ bool Rasterizer::WriteTimestampOnGpu(VAddr address, bool end_of_pipe) {
 
 bool Rasterizer::WriteLabelOnGpu(VAddr address, u64 value, u32 num_bytes) {
     static const bool enabled = [] {
-        const char* env = std::getenv("BB_GPU_LABELS");
+        const char* env = std::getenv("WOC_GPU_LABELS");
         return !env || env[0] != '0';
     }();
     if (!enabled || !VideoCore::GuestInPlace() || !HonestLabels() ||
-        BbFreeCheck::Enabled() || (num_bytes != 4 && num_bytes != 8) ||
+        WocFreeCheck::Enabled() || (num_bytes != 4 && num_bytes != 8) ||
         address % num_bytes != 0) {
         return false;
     }
@@ -307,13 +307,13 @@ bool Rasterizer::WriteLabelOnGpu(VAddr address, u64 value, u32 num_bytes) {
         return false;
     }
     static const bool force_portable = [] {
-        const char* env = std::getenv("BB_GPU_LABELS_PORTABLE");
+        const char* env = std::getenv("WOC_GPU_LABELS_PORTABLE");
         return env && env[0] != '0';
     }();
     const bool marker = instance.IsBufferMarkerSupported() && !force_portable;
     static const bool announced = [&] {
         std::printf("GPU: end-of-pipe labels are written by the GPU (%s; "
-                    "BB_GPU_LABELS=0: by a CPU thread after the GPU)\n",
+                    "WOC_GPU_LABELS=0: by a CPU thread after the GPU)\n",
                     marker ? "AMD buffer markers" : "portable Vulkan updates");
         return true;
     }();
@@ -349,7 +349,7 @@ bool Rasterizer::WriteLabelOnGpu(VAddr address, u64 value, u32 num_bytes) {
     }
     // A VRAM copy of these bytes gets them too, at its next binding (as for CPU-written labels).
     buffer_cache.NoteLateCommandWrite(address, &value, num_bytes);
-    BbStats::gpu_labels.fetch_add(1, std::memory_order_relaxed);
+    WocStats::gpu_labels.fetch_add(1, std::memory_order_relaxed);
     // In stream order for WAIT_REG_MEM, and the submission policy (HasUnsubmittedSignals).
     SignalAfterGpu([] {}, address, value);
     return true;
@@ -357,7 +357,7 @@ bool Rasterizer::WriteLabelOnGpu(VAddr address, u64 value, u32 num_bytes) {
 
 bool Rasterizer::PipeSignals() const {
     static const bool enabled = [] {
-        const char* env = std::getenv("BB_PIPE_SIGNALS");
+        const char* env = std::getenv("WOC_PIPE_SIGNALS");
         return !env || env[0] != '0';
     }();
     return enabled && HonestLabels() && UseDrawPipe() && OnStageA();
@@ -372,7 +372,7 @@ void Rasterizer::SubmitForSignals() {
         // fences: here they may not even be recorded yet.
         static constexpr u8 none = 0;
         RunInOrder([](Rasterizer& self, const u8*) { self.SubmitForSignalsNow(); }, &none, 0,
-                   BbToggle::PipelinedTasks, false);
+                   WocToggle::PipelinedTasks, false);
         return;
     }
     SubmitForSignalsNow();
@@ -381,23 +381,23 @@ void Rasterizer::SubmitForSignals() {
 void Rasterizer::SubmitForSignalsNow() {
     PublishSignals(); // the end of a guest submission
     static const auto interval = std::chrono::microseconds([] {
-        const char* env = std::getenv("BB_HONEST_FLUSH_US");
+        const char* env = std::getenv("WOC_HONEST_FLUSH_US");
         return env ? std::strtoll(env, nullptr, 10) : 2000ll;
     }());
     if (!HasUnsubmittedSignals()) {
         return;
     }
-    // Batched (one submission per BB_HONEST_FLUSH_US) while the GPU still has work; at once when it
+    // Batched (one submission per WOC_HONEST_FLUSH_US) while the GPU still has work; at once when it
     // has finished everything submitted: holding the work back then only leaves it idle. Not at
-    // once while draws are queued for this thread (BB_HONEST_IDLE_BACKLOG bytes, default 64 KiB):
+    // once while draws are queued for this thread (WOC_HONEST_IDLE_BACKLOG bytes, default 64 KiB):
     // it is then what the GPU waits for, and a submission costs it ~65 us (heavy scenes: 13 a
     // frame; 95 -> 100 FPS with half as many).
     static const bool idle_flush = [] {
-        const char* env = std::getenv("BB_HONEST_IDLE_FLUSH");
+        const char* env = std::getenv("WOC_HONEST_IDLE_FLUSH");
         return !env || env[0] != '0';
     }();
     static const u64 idle_backlog = [] {
-        const char* env = std::getenv("BB_HONEST_IDLE_BACKLOG");
+        const char* env = std::getenv("WOC_HONEST_IDLE_BACKLOG");
         return env ? std::strtoull(env, nullptr, 10) : u64(64 * 1024);
     }();
     const bool gpu_idle =
@@ -411,7 +411,7 @@ void Rasterizer::SubmitForSignalsNow() {
         return;
     }
     if (gpu_idle) {
-        BbStats::idle_flushes.fetch_add(1, std::memory_order_relaxed);
+        WocStats::idle_flushes.fetch_add(1, std::memory_order_relaxed);
     }
     Flush();
 }
@@ -428,7 +428,7 @@ bool Rasterizer::PendingSignalValue(VAddr address, u64& value) {
 }
 
 void Rasterizer::GpuSignalLoop(std::stop_token token) {
-    Common::SetCurrentThreadName("bb:GpuSignals");
+    Common::SetCurrentThreadName("woc:GpuSignals");
     auto* semaphore = scheduler.GetWorkSemaphore();
     const vk::Semaphore handle = semaphore->Handle();
     while (!token.stop_requested()) {
@@ -447,7 +447,7 @@ void Rasterizer::GpuSignalLoop(std::stop_token token) {
             .pSemaphores = &handle,
             .pValues = &tick,
         };
-        // bbport: a lost device ends the wait with a report (it spun here forever: the game froze
+        // wocport: a lost device ends the wait with a report (it spun here forever: the game froze
         // with its sound playing, Steam Deck); 10 s without progress prints what is stuck once.
         const auto wait_start = std::chrono::steady_clock::now();
         bool watched = false;
@@ -466,7 +466,7 @@ void Rasterizer::GpuSignalLoop(std::stop_token token) {
             }
         }
         semaphore->Refresh();
-        BbTimeline::Note(BbTimeline::GpuDone, semaphore->KnownGpuTick());
+        WocTimeline::Note(WocTimeline::GpuDone, semaphore->KnownGpuTick());
         while (true) {
             std::function<void()> signal;
             {
@@ -602,7 +602,7 @@ VideoCore::ImageId Rasterizer::FindTargetMemoized(VideoCore::TextureCache::Image
     };
     (append(parts), ...);
     const u64 generation = texture_cache.RegistryGeneration();
-    const bool memo_enabled = !BbToggle::Disabled(BbToggle::TextureBindingMemo);
+    const bool memo_enabled = !WocToggle::Disabled(WocToggle::TextureBindingMemo);
     if (memo_enabled && last.generation == generation && last.key_size == key_size &&
         std::memcmp(last.key.data(), key.data(), key_size) == 0) {
         texture_cache.MarkFound(last.image_id);
@@ -645,7 +645,7 @@ VideoCore::ImageId Rasterizer::FindTargetMemoized(VideoCore::TextureCache::Image
 }
 
 void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
-    BB_SECTION(PrepareRenderState);
+    WOC_SECTION(PrepareRenderState);
     // Prefetch render targets to handle overlaps with bound textures (e.g. mipgen)
     const auto& key = pipeline->GetGraphicsKey();
     const auto& regs = Regs();
@@ -690,7 +690,7 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
     } else {
         db_desc.first = {};
     }
-    // bbport: the G-buffer pass (5+ color targets) holds the scene depth, and its constants the
+    // wocport: the G-buffer pass (5+ color targets) holds the scene depth, and its constants the
     // main camera (shadow passes bind the same layout with the light's camera).
     gbuffer_draw = camera_motion->Enabled() && std::popcount(key.mrt_mask) >= 5 && db_desc.first;
     if (gbuffer_draw) {
@@ -701,7 +701,7 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
     if (upscaler->Enabled() && cb_descs[0].first) {
         upscaler->OnColorTarget(cb_descs[0].first);
     }
-    // bbport: scene color: a full-size RGBA16F target drawn with the scene depth.
+    // wocport: scene color: a full-size RGBA16F target drawn with the scene depth.
     if (upscaler->Enabled() && db_desc.first && db_desc.first == camera_motion->Depth() &&
         cb_descs[0].first && std::popcount(key.mrt_mask) <= 2) {
         const auto& color = texture_cache.GetImage(cb_descs[0].first);
@@ -764,7 +764,7 @@ void Rasterizer::EliminateFastClear() {
     ScopeMarkerEnd();
 }
 
-// bbport: two-stage draw pipeline (vk_draw_pipe.h). Packet layout, 8-byte aligned parts:
+// wocport: two-stage draw pipeline (vk_draw_pipe.h). Packet layout, 8-byte aligned parts:
 // DrawPacket, u16 block indices, u32 block words (RegDirty::BlockWords each), then per stage a
 // PacketStage with its user data and flattened user data, then (verification) the full file.
 namespace {
@@ -803,7 +803,7 @@ constexpr u32 AlignPacket(u32 size) {
 }
 u32 VerifyInterval() {
     static const u32 interval = [] {
-        const char* env = std::getenv("BB_PIPE_VERIFY");
+        const char* env = std::getenv("WOC_PIPE_VERIFY");
         return env ? static_cast<u32>(std::strtoul(env, nullptr, 10)) : 0u;
     }();
     return interval;
@@ -811,17 +811,17 @@ u32 VerifyInterval() {
 } // namespace
 
 bool Rasterizer::DrawPipeWanted() {
-    const char* env = std::getenv("BB_DRAW_PIPE");
+    const char* env = std::getenv("WOC_DRAW_PIPE");
     if (env && env[0]) {
         return env[0] == '1';
     }
     // Stage B spins while draws flow. Measured ahead with 16 threads (+19%) and with 4 cores /
     // 8 threads (taskset, Steam Deck-like: +18%).
-    return BbThreads::Available() >= 8;
+    return WocThreads::Available() >= 8;
 }
 
 bool Rasterizer::UseDrawPipe() const {
-    return draw_pipe && !host_markers_enabled && !BbToggle::Disabled(BbToggle::DrawPipeline);
+    return draw_pipe && !host_markers_enabled && !WocToggle::Disabled(WocToggle::DrawPipeline);
 }
 
 bool Rasterizer::OnStageA() const {
@@ -829,7 +829,7 @@ bool Rasterizer::OnStageA() const {
 }
 
 namespace {
-/// Stage A: cycles waited per drain site (BB_FRAME_STATS), keyed by function name and line.
+/// Stage A: cycles waited per drain site (WOC_FRAME_STATS), keyed by function name and line.
 std::unordered_map<const char*, std::unordered_map<u32, u64>> drain_sites;
 } // namespace
 
@@ -837,7 +837,7 @@ void Rasterizer::DrainDrawPipe(u32 reason, u32 line, const char* function) {
     if (!draw_pipe || !OnStageA()) {
         return;
     }
-    static const bool stats = std::getenv("BB_FRAME_STATS") != nullptr;
+    static const bool stats = std::getenv("WOC_FRAME_STATS") != nullptr;
     if (!stats) {
         draw_pipe->Drain(reason);
         return;
@@ -881,7 +881,7 @@ void Rasterizer::NotePendingRead(VAddr address, u64 size) {
 
 void Rasterizer::WaitForPendingReads(VAddr address, u64 size) {
     static const bool enabled = [] {
-        const char* env = std::getenv("BB_CONSTRAM_PIPE");
+        const char* env = std::getenv("WOC_CONSTRAM_PIPE");
         return !env || env[0] != '0';
     }();
     if (!draw_pipe || !OnStageA()) {
@@ -901,7 +901,7 @@ void Rasterizer::WaitForPendingReads(VAddr address, u64 size) {
 
 void Rasterizer::NoteCommandWriteInOrder(VAddr addr, const void* data, u64 size) {
     static const bool enabled = [] {
-        const char* env = std::getenv("BB_CONSTRAM_PIPE");
+        const char* env = std::getenv("WOC_CONSTRAM_PIPE");
         return !env || env[0] != '0';
     }();
     if (VideoCore::WriteTracking() || !IsMapped(addr, size)) {
@@ -928,7 +928,7 @@ void Rasterizer::NoteCommandWriteInOrder(VAddr addr, const void* data, u64 size)
             std::memcpy(&write, bytes, sizeof(write));
             self.NoteCommandWrite(write.addr, bytes + sizeof(write), write.size, true);
         },
-        payload.data(), static_cast<u32>(payload.size()), BbToggle::PipelinedTasks, false);
+        payload.data(), static_cast<u32>(payload.size()), WocToggle::PipelinedTasks, false);
 }
 
 bool Rasterizer::PendingWriteOverlaps(VAddr address, u64 size) {
@@ -942,7 +942,7 @@ bool Rasterizer::PendingWriteOverlaps(VAddr address, u64 size) {
 void Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDraw* prepared,
                            boost::container::static_vector<RingBinding, Shader::NUM_BUFFERS>& out) {
     const PreparedStage* prepared_stage = nullptr;
-    if (prepared && !BbToggle::Disabled(BbToggle::PreparedResources)) {
+    if (prepared && !WocToggle::Disabled(WocToggle::PreparedResources)) {
         for (u32 i = 0; i < prepared->num_stages; ++i) {
             const auto& candidate = prepared->stages[i];
             if (&candidate.program->info == &stage &&
@@ -972,7 +972,7 @@ void Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDr
     // Compute stages may run as HLE copy shaders, which read their buffers on the recording
     // thread whether or not they were copied here.
     const bool hle_candidate = stage.sw_stage == Shader::SwStage::Compute;
-    // BB_CONSTANTS_IN_PLACE: nothing is copied here; the recording thread binds the game's memory
+    // WOC_CONSTANTS_IN_PLACE: nothing is copied here; the recording thread binds the game's memory
     // (or copies what is not in place, a read noted below).
     const bool constants_in_place = VideoCore::ConstantsInPlace();
     for (u32 index = 0; index < stage.buffers.size(); ++index) {
@@ -996,10 +996,10 @@ void Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDr
             NotePendingGpuWrite(address, size);
             continue;
         }
-        if (BbCeStats::Enabled()) {
-            BbCeStats::Check(size <= VideoCore::BufferCache::STREAM_THRESHOLD
-                                 ? BbCeStats::RingConstants
-                                 : BbCeStats::LargeBuffer,
+        if (WocCeStats::Enabled()) {
+            WocCeStats::Check(size <= VideoCore::BufferCache::STREAM_THRESHOLD
+                                 ? WocCeStats::RingConstants
+                                 : WocCeStats::LargeBuffer,
                              address, size);
         }
         // The stream path of BufferCache::ObtainBuffer, taken here: small, read-only, not
@@ -1043,21 +1043,21 @@ void Rasterizer::PostDraw(const Pipeline* pipeline, const PreparedDraw* used_pre
     for (const auto* stage : stages) {
         if (stage) {
             auto& ring = rings[num_stages];
-            if (BbCeStats::Enabled()) {
+            if (WocCeStats::Enabled()) {
                 const auto ud = stage->UserData();
                 for (size_t i = 0; i + 1 < ud.size(); ++i) {
                     const u64 value = u64(ud[i]) | u64(ud[i + 1]) << 32;
                     if (value >= 0x100000000ull && value < (1ull << 40)) {
-                        BbCeStats::Check(BbCeStats::UserDataPointer, value, 64);
+                        WocCeStats::Check(WocCeStats::UserDataPointer, value, 64);
                     }
                 }
-                BbCeStats::Get().checks[BbCeStats::DmaStage]++;
-                BbCeStats::Get().hits[0][BbCeStats::DmaStage] += stage->uses_dma ? 1 : 0;
+                WocCeStats::Get().checks[WocCeStats::DmaStage]++;
+                WocCeStats::Get().hits[0][WocCeStats::DmaStage] += stage->uses_dma ? 1 : 0;
             }
-            // bbport BB_WATCH=addr,size (diagnostics): what the translator reads from that range on
+            // wocport WOC_WATCH=addr,size (diagnostics): what the translator reads from that range on
             // the CPU: user data pointing into it, constants copied from it; printed every 2 s.
             static const std::pair<u64, u64> watch = [] {
-                const char* env = std::getenv("BB_WATCH");
+                const char* env = std::getenv("WOC_WATCH");
                 if (!env) {
                     return std::pair<u64, u64>{0, 0};
                 }
@@ -1109,7 +1109,7 @@ void Rasterizer::PostDraw(const Pipeline* pipeline, const PreparedDraw* used_pre
                 }
             }
             ring.clear();
-            if (constant_ring && !BbToggle::Disabled(BbToggle::ConstantRing)) {
+            if (constant_ring && !WocToggle::Disabled(WocToggle::ConstantRing)) {
                 CollectRingBindings(*stage, used_prepared, ring);
             } else {
                 untracked_reads_packet = draw_pipe->NextPacket(); // bindings not listed
@@ -1137,7 +1137,7 @@ void Rasterizer::PostDraw(const Pipeline* pipeline, const PreparedDraw* used_pre
             NotePendingRead(indirect->count, sizeof(u32));
         }
     }
-    // bbport: the V#s of the vertex streams, read here from the tables the user data points to:
+    // wocport: the V#s of the vertex streams, read here from the tables the user data points to:
     // those tables are what the game's constant engine dumps (a ring of ~25 pages rewritten
     // ~14000 times a second). Read on the recording thread instead, a later dump had often
     // replaced them by then: depth of field drew its passes with another draw's vertices (a
@@ -1154,8 +1154,8 @@ void Rasterizer::PostDraw(const Pipeline* pipeline, const PreparedDraw* used_pre
                 const auto buffer = attrib.GetSharp(vs);
                 vsharps.push_back(buffer);
                 if (buffer.base_address != 0 && buffer.GetSize() > 0) {
-                    if (BbCeStats::Enabled()) {
-                        BbCeStats::Check(BbCeStats::Vertex, buffer.base_address, buffer.GetSize());
+                    if (WocCeStats::Enabled()) {
+                        WocCeStats::Check(WocCeStats::Vertex, buffer.base_address, buffer.GetSize());
                     }
                     NotePendingRead(buffer.base_address, buffer.GetSize());
                 }
@@ -1168,8 +1168,8 @@ void Rasterizer::PostDraw(const Pipeline* pipeline, const PreparedDraw* used_pre
             const VAddr index_address =
                 regs.index_base_address.Address<VAddr>() + u64(index_offset) * index_size;
             const u64 index_bytes = u64(regs.num_indices) * index_size;
-            if (BbCeStats::Enabled()) {
-                BbCeStats::Check(BbCeStats::Index, index_address, index_bytes);
+            if (WocCeStats::Enabled()) {
+                WocCeStats::Check(WocCeStats::Index, index_address, index_bytes);
             }
             NotePendingRead(index_address, index_bytes);
         }
@@ -1264,7 +1264,7 @@ void Rasterizer::RetireSubmission() {
 
 bool Rasterizer::RunInOrder(OrderedTask task, const void* data, u32 size, u64 toggle,
                             bool reads_guest_memory) {
-    if (!UseDrawPipe() || BbToggle::Disabled(toggle)) {
+    if (!UseDrawPipe() || WocToggle::Disabled(toggle)) {
         DrainDrawPipe(DrawPipe::ReasonRasterizer);
         task(*this, static_cast<const u8*>(data));
         return false;
@@ -1281,20 +1281,20 @@ bool Rasterizer::RunInOrder(OrderedTask task, const void* data, u32 size, u64 to
 }
 
 namespace {
-// BB_SECTIONS: ordered tasks by function (cycles, count), stage B only.
+// WOC_SECTIONS: ordered tasks by function (cycles, count), stage B only.
 constexpr std::size_t TaskKinds = 16;
 std::array<void*, TaskKinds> task_kinds{};
 std::array<u64, TaskKinds> task_cycles{}, task_counts{};
 } // namespace
 
 void Rasterizer::RunDrawPacket(void* context, const u8* data, u32 size) {
-    BB_SECTION(Packet);
+    WOC_SECTION(Packet);
     auto& self = *static_cast<Rasterizer*>(context);
     if (*reinterpret_cast<const PacketKind*>(data) == PacketKind::Task) {
-        BB_SECTION(Task);
+        WOC_SECTION(Task);
         self.buffer_cache.NewPacket();
         const auto& task = *reinterpret_cast<const TaskPacket*>(data);
-        if (BbSections::Enabled()) {
+        if (WocSections::Enabled()) {
             const u64 t0 = __rdtsc();
             task.task(self, data + sizeof(TaskPacket));
             void* fn = reinterpret_cast<void*>(task.task);
@@ -1441,7 +1441,7 @@ void Rasterizer::RunDrawPacket(void* context, const u8* data, u32 size) {
 }
 
 void Rasterizer::PrintPipeStats() {
-    static const bool stats = std::getenv("BB_FRAME_STATS") != nullptr;
+    static const bool stats = std::getenv("WOC_FRAME_STATS") != nullptr;
     if (!stats || (draw_pipe->packets & 1023) != 0) {
         return;
     }
@@ -1482,15 +1482,15 @@ void Rasterizer::PrintPipeStats() {
         std::printf(" ConstRam not waited=%.0f", constram_waits_skipped / seconds);
         constram_waits_skipped = 0;
     }
-    if (BbSections::Enabled()) {
-        static std::array<u64, BbSections::Count> last_sections{};
+    if (WocSections::Enabled()) {
+        static std::array<u64, WocSections::Count> last_sections{};
         const double packets = double(draw_pipe->packets - last_packets);
         const double tsc_hz = cycles / seconds;
         std::printf("\n  stage B us per packet:");
-        for (u32 s = 0; s < BbSections::Count; ++s) {
-            const u64 now_cycles = BbSections::cycles[s].load(std::memory_order_relaxed);
+        for (u32 s = 0; s < WocSections::Count; ++s) {
+            const u64 now_cycles = WocSections::cycles[s].load(std::memory_order_relaxed);
             if (packets > 0) {
-                std::printf(" %s %.2f", BbSections::Names[s],
+                std::printf(" %s %.2f", WocSections::Names[s],
                             1e6 * double(now_cycles - last_sections[s]) / tsc_hz / packets);
             }
             last_sections[s] = now_cycles;
@@ -1556,13 +1556,13 @@ bool Rasterizer::FilterDrawPasses() const {
 
 void Rasterizer::Draw(bool is_indexed, u32 index_offset, const PreparedDraw* prepared) {
     RENDERER_TRACE;
-    BbStats::draws.fetch_add(1, std::memory_order_relaxed);
+    WocStats::draws.fetch_add(1, std::memory_order_relaxed);
 
-    // bbport: with the draw pipeline this thread only selects the pipeline and hands the draw
+    // wocport: with the draw pipeline this thread only selects the pipeline and hands the draw
     // to the recording thread (DrawRecord there); draws FilterDraw handles itself run here.
     const bool pipelined = UseDrawPipe();
     if (pipelined && !FilterDrawPasses() &&
-        !BbToggle::Disabled(BbToggle::PipelinedMemoryWrites)) {
+        !WocToggle::Disabled(WocToggle::PipelinedMemoryWrites)) {
         PostDraw(nullptr, nullptr, false, 0);
         return;
     }
@@ -1593,26 +1593,26 @@ void Rasterizer::Draw(bool is_indexed, u32 index_offset, const PreparedDraw* pre
 
 void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw* used_prepared,
                             bool is_indexed, u32 index_offset) {
-    BB_SECTION(DrawRecord);
+    WOC_SECTION(DrawRecord);
     buffer_cache.NewPacket();
     if (DrawPipe::OnStageB()) {
         FrameCapture::Poll();
         scheduler.PopPendingOperations();
     }
-    // bbport (BB_PREUPLOAD): once a frame, guest GPU memory the CPU wrote and then left alone is
-    // uploaded ahead of its use, BB_PREUPLOAD_MB (16) at most per frame.
-    if (const u32 frame = BbStats::frame_number.load(std::memory_order_relaxed);
+    // wocport (WOC_PREUPLOAD): once a frame, guest GPU memory the CPU wrote and then left alone is
+    // uploaded ahead of its use, WOC_PREUPLOAD_MB (16) at most per frame.
+    if (const u32 frame = WocStats::frame_number.load(std::memory_order_relaxed);
         frame != preupload_frame) {
         preupload_frame = frame;
-        BB_SECTION(Preupload);
+        WOC_SECTION(Preupload);
         static const u64 budget = [] {
-            const char* env = std::getenv("BB_PREUPLOAD_MB");
+            const char* env = std::getenv("WOC_PREUPLOAD_MB");
             return (env ? std::strtoull(env, nullptr, 10) : 16ull) << 20;
         }();
         buffer_cache.Preupload(budget);
     }
     const auto& regs = Regs();
-    // bbport: the pass copying a finished frame to a display buffer; the previous draw's
+    // wocport: the pass copying a finished frame to a display buffer; the previous draw's
     // target is that frame.
     if (camera_motion->Enabled() && regs.color_buffers[0] &&
         FrameCapture::IsDisplayBuffer(regs.color_buffers[0].Address())) {
@@ -1625,7 +1625,7 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
         camera_motion->SetJitter(upscaler->Jitter());
         object_motion->OnFrameStart();
         NoteFrameStart();
-        static const char* scene_debug = std::getenv("BB_SCENE_DEBUG");
+        static const char* scene_debug = std::getenv("WOC_SCENE_DEBUG");
         scene_debug_frame = scene_debug && std::remove(scene_debug) == 0;
         scene_targets->debug = scene_debug_frame;
     }
@@ -1641,7 +1641,7 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
                          UiComposition::NativeViewport(viewport.xscale * 2, viewport.yscale * 2));
     }
     const PreparedDraw* draw_prepared = bind_prepared;
-    // bbport: vertex and index buffers are resolved while the helper binds textures (their
+    // wocport: vertex and index buffers are resolved while the helper binds textures (their
     // commands are recorded after BeginRendering, as before).
     draw_inputs = {pipeline, draw_prepared, index_offset, is_indexed, true, false};
     const bool bound = BindResources(pipeline);
@@ -1668,13 +1668,13 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
         runtime.FlushBarriers();
     }
 
-    // bbport: screen-space (clip disabled) draws into the upscaler's output-size images.
+    // wocport: screen-space (clip disabled) draws into the upscaler's output-size images.
     push_data.xscale *= target_scale[0];
     push_data.xoffset *= target_scale[0];
     push_data.yscale *= target_scale[1];
     push_data.yoffset *= target_scale[1];
     if (motion_draw && motion_geometry) {
-        BB_SECTION(Motion);
+        WOC_SECTION(Motion);
         const auto& vs = pipeline->GetStage(Shader::SwStage::Vertex);
         const auto [base_vertex, first_instance] =
             GetDrawOffsets(regs, vs, pipeline->GetFetchShader());
@@ -1686,7 +1686,7 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
         // since last frame (model constants follow the camera, the palette does not). The
         // check comes first: most gated draws are static world pieces with long index lists.
         static const bool all_motion = [] {
-            const char* value = std::getenv("BB_OBJECT_MOTION_ALL");
+            const char* value = std::getenv("WOC_OBJECT_MOTION_ALL");
             return value && value[0] == '1';
         }();
         bool gated = !all_motion;
@@ -1757,11 +1757,11 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
         }
     }
     {
-        BB_SECTION(PipelineBind);
+        WOC_SECTION(PipelineBind);
         pipeline->BindResources(set_writes, push_data, {image_infos.data(), image_infos.size()},
                                 {buffer_infos.data(), buffer_infos.size()});
     }
-    // bbport: jitter geometry drawn with the scene depth, not full-screen passes (a shifted
+    // wocport: jitter geometry drawn with the scene depth, not full-screen passes (a shifted
     // full-screen quad leaves an edge column unwritten).
     draw_jitter = {};
     if (upscaler->Enabled() && db_desc.first && db_desc.first == camera_motion->Depth() &&
@@ -1814,7 +1814,7 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     }
     DebugState.IncDrawCall();
 
-    BB_SECTION(Kick);
+    WOC_SECTION(Kick);
     ResetBindings(false);
     scheduler.KickRecording();
 }
@@ -1823,10 +1823,10 @@ void Rasterizer::DrawIndirect(bool is_indexed, VAddr arg_address, u32 offset, u3
                               u32 max_count, VAddr count_address, u16 vertex_sgpr_offset,
                               u16 instance_sgpr_offset) {
     RENDERER_TRACE;
-    // bbport: like direct draws, handed to the recording thread after the pipeline selection
+    // wocport: like direct draws, handed to the recording thread after the pipeline selection
     // (else the GPU thread waited here for a whole frame of queued draws).
     const bool pipelined = UseDrawPipe() && FilterDrawPasses() &&
-                           !BbToggle::Disabled(BbToggle::PipelinedIndirectDraws);
+                           !WocToggle::Disabled(WocToggle::PipelinedIndirectDraws);
     if (!pipelined) {
         DrainDrawPipe();
         scheduler.PopPendingOperations();
@@ -1897,7 +1897,7 @@ void Rasterizer::DrawIndirectRecord(const GraphicsPipeline* pipeline, bool is_in
         runtime.FlushBarriers();
     }
 
-    // bbport: screen-space (clip disabled) draws into the upscaler's output-size images.
+    // wocport: screen-space (clip disabled) draws into the upscaler's output-size images.
     push_data.xscale *= target_scale[0];
     push_data.xoffset *= target_scale[0];
     push_data.yscale *= target_scale[1];
@@ -1952,9 +1952,9 @@ void Rasterizer::DrawIndirectRecord(const GraphicsPipeline* pipeline, bool is_in
 
 void Rasterizer::DispatchDirect() {
     RENDERER_TRACE;
-    BbStats::dispatches.fetch_add(1, std::memory_order_relaxed);
-    // bbport: like draws, handed to the draw recording thread after the pipeline selection.
-    const bool pipelined = UseDrawPipe() && !BbToggle::Disabled(BbToggle::PipelinedDispatch);
+    WocStats::dispatches.fetch_add(1, std::memory_order_relaxed);
+    // wocport: like draws, handed to the draw recording thread after the pipeline selection.
+    const bool pipelined = UseDrawPipe() && !WocToggle::Disabled(WocToggle::PipelinedDispatch);
     if (!pipelined) {
         DrainDrawPipe();
     }
@@ -1970,7 +1970,7 @@ void Rasterizer::DispatchDirect() {
 }
 
 void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
-    BB_SECTION(DispatchRecord);
+    WOC_SECTION(DispatchRecord);
     buffer_cache.NewPacket();
     FrameCapture::Poll();
     gbuffer_draw = false;
@@ -1994,13 +1994,13 @@ void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
     }
     bool hle;
     {
-        BB_SECTION(ShaderHle);
+        WOC_SECTION(ShaderHle);
         hle = ExecuteShaderHLE(cs, Regs(), cs_program, *this);
     }
     if (hle) {
         return;
     }
-    // bbport: the game's copy shader running as itself (BB_COPY_SHADER_NATIVE): its destinations stay in
+    // wocport: the game's copy shader running as itself (WOC_COPY_SHADER_NATIVE): its destinations stay in
     // the game's memory. They hold data our translator reads on the CPU (next to shader code the
     // game uploads this way); a VRAM copy of them showed it a stale copy (a black scene). The
     // copy list read on the CPU (vk_shader_hle.cpp) kept them in place too.
@@ -2044,8 +2044,8 @@ void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
 
 void Rasterizer::DispatchIndirect(VAddr address, u32 offset, u32 size) {
     RENDERER_TRACE;
-    // bbport: handed to the recording thread like direct dispatches.
-    const bool pipelined = UseDrawPipe() && !BbToggle::Disabled(BbToggle::PipelinedIndirectDraws);
+    // wocport: handed to the recording thread like direct dispatches.
+    const bool pipelined = UseDrawPipe() && !WocToggle::Disabled(WocToggle::PipelinedIndirectDraws);
     if (!pipelined) {
         DrainDrawPipe();
     }
@@ -2117,7 +2117,7 @@ void Rasterizer::DispatchIndirectRecord(const ComputePipeline* pipeline, VAddr a
 }
 
 u64 Rasterizer::Flush() {
-    BB_SECTION(Flush);
+    WOC_SECTION(Flush);
     DrainDrawPipe();
     PublishSignals(); // the recording thread's (it is idle here, or this is it)
     last_flush_ns.store(std::chrono::steady_clock::now().time_since_epoch().count(),
@@ -2125,7 +2125,7 @@ u64 Rasterizer::Flush() {
     const u64 current_tick = scheduler.CurrentTick();
     SubmitInfo info{};
     scheduler.Flush(info);
-    BbTimeline::Note(BbTimeline::VulkanSubmit, current_tick, DrawPipe::OnStageB() ? 1 : 0);
+    WocTimeline::Note(WocTimeline::VulkanSubmit, current_tick, DrawPipe::OnStageB() ? 1 : 0);
     return current_tick;
 }
 
@@ -2148,7 +2148,7 @@ void Rasterizer::OnSubmit() {
 
 const PreparedStage* Rasterizer::FindPreparedStage(const Shader::Info& stage) const {
     // Sharps a draw-preparation worker read from the same flattened user data.
-    if (!bind_prepared || BbToggle::Disabled(BbToggle::PreparedResources)) {
+    if (!bind_prepared || WocToggle::Disabled(WocToggle::PreparedResources)) {
         return nullptr;
     }
     for (u32 i = 0; i < bind_prepared->num_stages; ++i) {
@@ -2165,7 +2165,7 @@ const PreparedStage* Rasterizer::FindPreparedStage(const Shader::Info& stage) co
 
 bool Rasterizer::BindHelperWanted() {
     // A spinning helper pays off only with cores to spare (the recording thread spins too).
-    const char* env = std::getenv("BB_TEXTURE_HELPER");
+    const char* env = std::getenv("WOC_TEXTURE_HELPER");
     if (env && env[0]) {
         return env[0] == '1';
     }
@@ -2175,9 +2175,9 @@ bool Rasterizer::BindHelperWanted() {
 
 bool Rasterizer::HelperEligible(const Pipeline* pipeline) const {
     if (pipeline->IsCompute() || !bind_helper.Available() || FrameCapture::Active() ||
-        BbToggle::Disabled(BbToggle::TextureBindHelper) ||
-        BbToggle::Disabled(BbToggle::TextureBindingMemo) ||
-        BbToggle::Disabled(BbToggle::UpdateImageFastPath)) {
+        WocToggle::Disabled(WocToggle::TextureBindHelper) ||
+        WocToggle::Disabled(WocToggle::TextureBindingMemo) ||
+        WocToggle::Disabled(WocToggle::UpdateImageFastPath)) {
         return false;
     }
     for (const auto* stage : pipeline->GetStages()) {
@@ -2260,7 +2260,7 @@ void Rasterizer::JoinBindHelper(void* context) {
 }
 
 namespace {
-// bbport: BB_RES_STATS=1 (diagnostics) — what the bound shaders read their resource descriptors
+// wocport: WOC_RES_STATS=1 (diagnostics) — what the bound shaders read their resource descriptors
 // from: user data registers (state the API call set) or tables in memory (SRT walker), by kind,
 // per draw and dispatch; printed every 5 s. Measures the step "descriptors read by the GPU"
 // (docs/EMULATION_REMOVAL_PLAN.ru.md).
@@ -2287,7 +2287,7 @@ int SharpSource(const Fetch& fetch) {
 }
 void NoteResStats(const Pipeline* pipeline) {
     static const bool enabled = [] {
-        const char* env = std::getenv("BB_RES_STATS");
+        const char* env = std::getenv("WOC_RES_STATS");
         return env && env[0] == '1';
     }();
     if (!enabled) {
@@ -2351,18 +2351,18 @@ void NoteResStats(const Pipeline* pipeline) {
 } // namespace
 
 bool Rasterizer::BindResources(const Pipeline* pipeline) {
-    BB_SECTION(BindResources);
+    WOC_SECTION(BindResources);
     NoteResStats(pipeline);
     {
-        // bbport BB_HLE_STATS=1 (diagnostics): how often the compute shader substitutions fire.
-        static const bool hle_stats = std::getenv("BB_HLE_STATS") != nullptr;
-        // BB_HLE_OFF=mask (experiment): 1 image copy, 2 metadata clear, 4 image clear run as the
+        // wocport WOC_HLE_STATS=1 (diagnostics): how often the compute shader substitutions fire.
+        static const bool hle_stats = std::getenv("WOC_HLE_STATS") != nullptr;
+        // WOC_HLE_OFF=mask (experiment): 1 image copy, 2 metadata clear, 4 image clear run as the
         // game's shaders.
         static const u32 hle_off = [] {
-            const char* env = std::getenv("BB_HLE_OFF");
+            const char* env = std::getenv("WOC_HLE_OFF");
             return env ? u32(std::strtoul(env, nullptr, 0)) : 0u;
         }();
-        static const bool copy_log = std::getenv("BB_IMAGE_COPY_LOG") != nullptr;
+        static const bool copy_log = std::getenv("WOC_IMAGE_COPY_LOG") != nullptr;
         if ((hle_off & 1) && copy_log) {
             IsComputeImageCopy(pipeline, true);
         }
@@ -2392,12 +2392,12 @@ bool Rasterizer::BindResources(const Pipeline* pipeline) {
     set_writes.clear();
     buffer_infos.clear();
     image_infos.clear();
-    // bbport: G-buffer passes sample material textures for a scene rendered below the output
+    // wocport: G-buffer passes sample material textures for a scene rendered below the output
     // size; the temporal upscaler restores the detail of the output's mip level (FSR guide:
     // log2(render / output)). Shadows, post-processing and UI keep the guest's bias.
     sampler_lod_bias = 0.0f;
     pipeline_is_compute = pipeline->IsCompute();
-    if (!pipeline->IsCompute() && !BbToggle::Disabled(BbToggle::SceneMipBias) &&
+    if (!pipeline->IsCompute() && !WocToggle::Disabled(WocToggle::SceneMipBias) &&
         std::popcount(static_cast<const GraphicsPipeline*>(pipeline)->GetGraphicsKey().mrt_mask &
                       0xff) >= 5) {
         sampler_lod_bias = upscaler->SceneMipBias();
@@ -2410,7 +2410,7 @@ bool Rasterizer::BindResources(const Pipeline* pipeline) {
 
     bool uses_dma = false;
 
-    static const bool stats = std::getenv("BB_FRAME_STATS") != nullptr;
+    static const bool stats = std::getenv("WOC_FRAME_STATS") != nullptr;
     if (stats && ((helper_full + helper_partial + helper_serial) & 1023) == 0) {
         static auto window = std::chrono::steady_clock::now();
         const auto now = std::chrono::steady_clock::now();
@@ -2447,7 +2447,7 @@ bool Rasterizer::BindResources(const Pipeline* pipeline) {
             uses_dma |= stage->uses_dma;
         }
     } else {
-        // bbport: textures on the helper, buffers here. Without mip arrays every stage's
+        // wocport: textures on the helper, buffers here. Without mip arrays every stage's
         // descriptors are [buffers][images][samplers], one each, so both sides know their
         // binding numbers and descriptor write slots up front.
         struct BufferStage {
@@ -2488,7 +2488,7 @@ bool Rasterizer::BindResources(const Pipeline* pipeline) {
             auto& stage = buffer_stages[i];
             BindBuffers(*stage.info, stage.prepared, stage.binding, push_data, stage.write_index);
         }
-        if (draw_inputs.pending && !BbToggle::Disabled(BbToggle::EarlyDrawInputs)) {
+        if (draw_inputs.pending && !WocToggle::Disabled(WocToggle::EarlyDrawInputs)) {
             ResolveVertexBuffers(draw_inputs.pipeline, draw_inputs.prepared);
             if (draw_inputs.is_indexed) {
                 ResolveIndexBuffer(draw_inputs.index_offset);
@@ -2521,8 +2521,8 @@ void Rasterizer::BindVertexBuffers(const GraphicsPipeline* pipeline, const Prepa
 }
 
 void Rasterizer::EmitVertexBuffers() {
-    BB_SECTION(EmitVertexBuffers);
-    // bbport: only the used entries go into the recording chunk (the static vectors hold 32 of
+    WOC_SECTION(EmitVertexBuffers);
+    // wocport: only the used entries go into the recording chunk (the static vectors hold 32 of
     // each: ~3 KiB copied per draw).
     auto& v = vertex_binds;
     const bool dynamic_input = instance.IsVertexInputDynamicState();
@@ -2559,7 +2559,7 @@ void Rasterizer::EmitVertexBuffers() {
 
 void Rasterizer::ResolveVertexBuffers(const GraphicsPipeline* pipeline,
                                       const PreparedDraw* prepared) {
-    BB_SECTION(ResolveVertexBuffers);
+    WOC_SECTION(ResolveVertexBuffers);
     const auto& regs = Regs();
     auto& v = vertex_binds;
     v.num_buffers = 0;
@@ -2578,14 +2578,14 @@ void Rasterizer::ResolveVertexBuffers(const GraphicsPipeline* pipeline,
     const PreparedVertexInputs* ready =
         prepared && prepared->vertex.valid && instance.IsVertexInputDynamicState() && fetch &&
                 fetch->attributes.size() == prepared->vertex.count && !FrameCapture::Active() &&
-                !BbToggle::Disabled(BbToggle::PreparedResources)
+                !WocToggle::Disabled(WocToggle::PreparedResources)
             ? &prepared->vertex
             : nullptr;
     if (ready) {
         attributes.assign(ready->attributes, ready->attributes + ready->count);
         bindings.assign(ready->bindings, ready->bindings + ready->count);
         guest_buffers.assign(ready->buffers, ready->buffers + ready->count);
-        if (BbCeStats::Enabled() && packet_vsharps.size() == ready->count) {
+        if (WocCeStats::Enabled() && packet_vsharps.size() == ready->count) {
             static u64 compared = 0, differed = 0;
             ++compared;
             differed += std::memcmp(ready->buffers, packet_vsharps.data(),
@@ -2600,7 +2600,7 @@ void Rasterizer::ResolveVertexBuffers(const GraphicsPipeline* pipeline,
         pipeline->GetVertexInputs(attributes, bindings, divisors, guest_buffers,
                                   regs.vgt_instance_step_rate_0, regs.vgt_instance_step_rate_1,
                                   packet_vsharps);
-        if (BbCeStats::Enabled() && !packet_vsharps.empty()) {
+        if (WocCeStats::Enabled() && !packet_vsharps.empty()) {
             // What reading the V# tables here would have given instead (the old path).
             static u64 compared = 0, differed = 0;
             const auto& fetch = pipeline->GetFetchShader();
@@ -2732,7 +2732,7 @@ void Rasterizer::EmitIndexBuffer() {
 }
 
 void Rasterizer::ResolveIndexBuffer(u32 index_offset) {
-    BB_SECTION(ResolveIndexBuffer);
+    WOC_SECTION(ResolveIndexBuffer);
     const auto& regs = Regs();
 
     // Figure out index type and size.
@@ -2763,7 +2763,7 @@ void Rasterizer::ResetBindings(bool is_compute) {
         const auto write_flag =
             is_written ? vk::AccessFlagBits2::eShaderWrite : vk::AccessFlagBits2::eNone;
         if (!buffer) {
-            // bbport BB_LAYER_MEMORY: a paged binding (any buffer of the game's memory).
+            // wocport WOC_LAYER_MEMORY: a paged binding (any buffer of the game's memory).
             runtime.AccessGlobal(dst_stage, vk::AccessFlagBits2::eShaderRead | write_flag);
             continue;
         }
@@ -2776,7 +2776,7 @@ void Rasterizer::ResetBindings(bool is_compute) {
 }
 
 namespace {
-// bbport BB_LAYER_MEMORY: the page table the info collection pass appends to every shader with
+// wocport WOC_LAYER_MEMORY: the page table the info collection pass appends to every shader with
 // guest buffers is not one of the shader's own (the HLE patterns below count those).
 size_t ShaderBufferCount(const Shader::Info& info) {
     size_t count = info.buffers.size();
@@ -2874,8 +2874,8 @@ bool Rasterizer::IsComputeImageCopy(const Pipeline* pipeline, bool dry_run) {
     // Perform image copy
     VideoCore::Image& src_image = desc0.is_written ? image1 : image0;
     VideoCore::Image& dst_image = desc0.is_written ? image0 : image1;
-    // bbport BB_IMAGE_COPY_LOG=1 (diagnostics): the copies this recognizes.
-    static const bool copy_log = std::getenv("BB_IMAGE_COPY_LOG") != nullptr;
+    // wocport WOC_IMAGE_COPY_LOG=1 (diagnostics): the copies this recognizes.
+    static const bool copy_log = std::getenv("WOC_IMAGE_COPY_LOG") != nullptr;
     if (copy_log) {
         static std::atomic<u32> printed{0};
         if (printed.fetch_add(1) < 40) {
@@ -2955,14 +2955,14 @@ bool Rasterizer::IsComputeImageClear(const Pipeline* pipeline) {
 }
 
 namespace {
-// bbport: BB_TRACE_SHADER=hash[,hash...] (diagnostics) — the buffers those shaders bind: address,
+// wocport: WOC_TRACE_SHADER=hash[,hash...] (diagnostics) — the buffers those shaders bind: address,
 // size, written or read, where the data is (in place: the game's memory over PCIe on a discrete
 // GPU; VRAM; partly), how often; printed every 5 s.
 void TraceShaderBinding(const Shader::Info& stage, VAddr addr, u64 size, bool written,
                         const VideoCore::BufferCache& cache) {
     static const std::vector<u64> hashes = [] {
         std::vector<u64> out;
-        const char* env = std::getenv("BB_TRACE_SHADER");
+        const char* env = std::getenv("WOC_TRACE_SHADER");
         for (const char* at = env; at && *at;) {
             char* end = nullptr;
             out.push_back(std::strtoull(at, &end, 16));
@@ -3010,12 +3010,12 @@ void TraceShaderBinding(const Shader::Info& stage, VAddr addr, u64 size, bool wr
 void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* prepared,
                              Shader::Backend::Bindings& binding,
                              Shader::PushData& push_data, u32& write_index) {
-    BB_SECTION(BindBuffers);
+    WOC_SECTION(BindBuffers);
     const u64 alignment = instance.StorageMinAlignment();
     for (u32 buffer_index = 0; buffer_index < stage.buffers.size(); ++buffer_index) {
         const auto& desc = stage.buffers[buffer_index];
         const RingBinding* ring = num_ring_stages ? FindRingBinding(stage, buffer_index) : nullptr;
-        // bbport: the ring holds what the CPU saw in the game's memory; constants that are an
+        // wocport: the ring holds what the CPU saw in the game's memory; constants that are an
         // image's memory (WipEout's tone mapping reads the exposure its previous pass rendered
         // into a 3x1 target) are the GPU's: bound from the image below instead.
         if (ring && !desc.IsSpecial() && texture_cache.FindImageFromRange(ring->address, ring->size)) {
@@ -3114,13 +3114,13 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
             if (vsharp.base_address == 0 || vsharp.GetSize() == 0) {
                 buffer_infos.emplace_back(VK_NULL_HANDLE, 0, VK_WHOLE_SIZE);
             } else if (Shader::IsPagedBuffer(VideoCore::BufferCache::LayerPagedActive(), vsharp)) {
-                // bbport BB_LAYER_MEMORY: nearly all memory as one buffer: the shader reaches it
+                // wocport WOC_LAYER_MEMORY: nearly all memory as one buffer: the shader reaches it
                 // through the page table; the descriptor holds its record. It may touch any
                 // buffer of the game's memory: barriers before it, and after it if it writes.
                 const auto [record, record_offset] = buffer_cache.LayerPagedRecord(
                     vsharp.base_address, vsharp.GetSize(), desc.is_written);
-                // BB_LAYER_PAGED_STATS=1: paged bindings per shader, every 5 s.
-                static const bool paged_stats = std::getenv("BB_LAYER_PAGED_STATS") != nullptr;
+                // WOC_LAYER_PAGED_STATS=1: paged bindings per shader, every 5 s.
+                static const bool paged_stats = std::getenv("WOC_LAYER_PAGED_STATS") != nullptr;
                 if (paged_stats) {
                     static std::map<std::pair<u64, u64>, std::pair<u64, u64>> counts;
                     static u32 printed = 0;
@@ -3128,7 +3128,7 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                                       (vsharp.base_address << 1) | u64(desc.is_written)}];
                     ++c.first;
                     c.second = vsharp.GetSize();
-                    const u32 now = BbStats::coarse_second.load(std::memory_order_relaxed);
+                    const u32 now = WocStats::coarse_second.load(std::memory_order_relaxed);
                     if (now - printed >= 5) {
                         printed = now;
                         for (const auto& [key, value] : counts) {
@@ -3158,7 +3158,7 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                     LOG_ERROR(Render, "Clamped size from {} to {} for stage {:#x}",
                               vsharp.GetSize(), size, stage.pgm_hash);
                 }
-                // bbport: a constant or storage buffer that is a render target's memory reads
+                // wocport: a constant or storage buffer that is a render target's memory reads
                 // what the GPU rendered there: the image is copied into the game's memory first,
                 // in stream order (TextureCache::DownloadImageMemory). WipEout's tone mapping
                 // reads its exposure, rendered into a 3x1 target, as constants.
@@ -3181,7 +3181,7 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                                 stage.pgm_hash);
                 }
                 push_data.AddOffset(binding.buffer, adjust);
-                // bbport BB_LAYER_MEMORY: a huge binding may come back cut at the end of its
+                // wocport WOC_LAYER_MEMORY: a huge binding may come back cut at the end of its
                 // guest chunk's buffer.
                 buffer_infos.emplace_back(
                     buffer->Handle(), offset_aligned,
@@ -3217,7 +3217,7 @@ Rasterizer::ImageDescCacheEntry& Rasterizer::CachedImageDescEntry(const AmdGpu::
     const auto matches = [&](const ImageDescCacheEntry& e) {
         return e.flags == flags && e.sharp == key;
     };
-    const bool disabled = BbToggle::Disabled(BbToggle::ImageDescCache);
+    const bool disabled = WocToggle::Disabled(WocToggle::ImageDescCache);
     ImageDescCacheEntry* slot = nullptr;
     if (!disabled && matches(set[0])) {
         slot = &set[0];
@@ -3236,7 +3236,7 @@ Rasterizer::ImageDescCacheEntry& Rasterizer::CachedImageDescEntry(const AmdGpu::
     slot->last_use = ++desc_use_counter;
     auto& entry = *slot;
     if (entry.flags != flags || entry.sharp != key ||
-        BbToggle::Disabled(BbToggle::ImageDescCache)) {
+        WocToggle::Disabled(WocToggle::ImageDescCache)) {
         entry.desc = VideoCore::TextureCache::ImageDesc{sharp, res};
         entry.sharp = key;
         entry.flags = flags;
@@ -3249,7 +3249,7 @@ Rasterizer::ImageDescCacheEntry& Rasterizer::CachedImageDescEntry(const AmdGpu::
 void Rasterizer::BindTextures(const Shader::Info& stage, const PreparedStage* prepared,
                               Shader::Backend::Bindings& binding, u32& write_index,
                               bool& barrier, bool on_helper) {
-    BB_SECTION(BindTextures);
+    WOC_SECTION(BindTextures);
     const u32 first_image_idx = image_infos.size();
     TextureSet* set_slot = nullptr;
     if (!on_helper && BindTexturesFromSet(stage, prepared, first_image_idx, barrier, set_slot)) {
@@ -3279,15 +3279,15 @@ void Rasterizer::BindTextures(const Shader::Info& stage, const PreparedStage* pr
     // SampleSceneProxies: bindings that may read a reduced scene proxy instead of the native
     // image (normalized sampling only; see Shader::ImageResource::needs_native).
     boost::container::small_vector<bool, 16> binding_proxy_ok;
-    const bool sample_proxies = !BbToggle::Disabled(BbToggle::SampleSceneProxies) &&
+    const bool sample_proxies = !WocToggle::Disabled(WocToggle::SampleSceneProxies) &&
                                 !on_helper && scene_targets->Reduced();
 
     for (u32 image_index = 0; image_index < stage.images.size(); ++image_index) {
         const auto& image_desc = stage.images[image_index];
         const auto tsharp =
             prepared ? prepared->image_sharps[image_index] : image_desc.GetSharp(stage);
-        // bbport: a hash lookup per texture per draw for a diagnostic only.
-        static const bool warn_meta = std::getenv("BB_WARN_META_TEXTURE") != nullptr;
+        // wocport: a hash lookup per texture per draw for a diagnostic only.
+        static const bool warn_meta = std::getenv("WOC_WARN_META_TEXTURE") != nullptr;
         if (warn_meta && texture_cache.IsMeta(tsharp.Address())) {
             LOG_WARNING(Render_Vulkan, "Unexpected metadata read by a shader (texture)");
         }
@@ -3329,7 +3329,7 @@ void Rasterizer::BindTextures(const Shader::Info& stage, const PreparedStage* pr
         auto& desc_entry =
             prepared ? CachedImageDescEntry(tsharp, image_desc, prepared->image_hashes[image_index])
                      : CachedImageDescEntry(tsharp, image_desc);
-        // BB_SCENE_DEBUG: proxied scene targets this binding reads at the native size, and why.
+        // WOC_SCENE_DEBUG: proxied scene targets this binding reads at the native size, and why.
         const auto debug_native = [&](const VideoCore::Image& image) {
             if (!scene_debug_frame || proxy_candidate || !image.scene_proxy) return;
             std::printf("Scene native read: %s %016llx %s %ux%u needs_native %d written %d "
@@ -3341,11 +3341,11 @@ void Rasterizer::BindTextures(const Shader::Info& stage, const PreparedStage* pr
                         int(image_desc.is_written), num_bindings, int(mip_fallback_mode));
         };
         for (auto i = 0; i < num_bindings; i++) {
-            // bbport: a plain binding (no mip override) of the same T# resolves to the same image
+            // wocport: a plain binding (no mip override) of the same T# resolves to the same image
             // while no image was registered or unregistered.
             if (mip_fallback_mode == Shader::MipStorageFallbackMode::None &&
                 desc_entry.found_generation == texture_cache.RegistryGeneration() &&
-                !BbToggle::Disabled(BbToggle::TextureBindingMemo)) {
+                !WocToggle::Disabled(WocToggle::TextureBindingMemo)) {
                 desc_entry.pinned = bind_epoch;
                 auto& [image_id, _] =
                     image_bindings.emplace_back(desc_entry.found_id, &desc_entry.found_desc);
@@ -3433,7 +3433,7 @@ void Rasterizer::BindTextures(const Shader::Info& stage, const PreparedStage* pr
                 image_id, desc, memo_entry ? &memo_entry->view_memo : nullptr, !on_helper);
             const auto binding = image.binding;
 
-            // bbport: a proxied scene image sampled with normalized coordinates reads the proxy:
+            // wocport: a proxied scene image sampled with normalized coordinates reads the proxy:
             // no resample to the native size (the native image is not touched).
             if (binding_proxy_ok[binding_index] && !is_storage && !binding.force_general &&
                 !binding.is_target &&
@@ -3486,7 +3486,7 @@ void Rasterizer::BindTextures(const Shader::Info& stage, const PreparedStage* pr
             vk::ImageView view = *image_view.image_view;
             vk::ImageLayout layout = image.backing->state.layout;
             if (upscaler->Enabled()) {
-                // bbport: the display pass reads the upscaled frame (scaled presets).
+                // wocport: the display pass reads the upscaled frame (scaled presets).
                 upscaler->RedirectSampled(image_id, image_view.info, view, layout);
             }
             image_infos.emplace_back(VK_NULL_HANDLE, view, layout);
@@ -3529,13 +3529,13 @@ void Rasterizer::BindTextures(const Shader::Info& stage, const PreparedStage* pr
     BindSamplers(stage, prepared, binding, write_index);
 }
 
-// bbport: the PS4 build samples most scene textures with little or no anisotropic filtering.
+// wocport: the PS4 build samples most scene textures with little or no anisotropic filtering.
 // Behind the temporal upscaler the output shows the detail of the output's mip level, and
 // surfaces seen at a grazing angle (stairs, floors, walls along the view) stay blurred.
-// Mipmapped linear samplers of graphics draws get BB_ANISO (16; 0 = the game's) times.
+// Mipmapped linear samplers of graphics draws get WOC_ANISO (16; 0 = the game's) times.
 void Rasterizer::ForceAnisotropy(AmdGpu::Sampler& sharp, bool is_depth) const {
     static const int forced = [] {
-        const char* value = std::getenv("BB_ANISO");
+        const char* value = std::getenv("WOC_ANISO");
         return value ? std::atoi(value) : 16;
     }();
     if (!is_depth && !pipeline_is_compute) {
@@ -3549,7 +3549,7 @@ void Rasterizer::ForceAnisotropy(AmdGpu::Sampler& sharp, bool is_depth) const {
                         sharp.MaxAniso());
         }
     }
-    if (forced <= 1 || is_depth || pipeline_is_compute || BbToggle::Disabled(BbToggle::ForcedAniso) ||
+    if (forced <= 1 || is_depth || pipeline_is_compute || WocToggle::Disabled(WocToggle::ForcedAniso) ||
         sharp.mip_filter == AmdGpu::MipFilter::None ||
         (sharp.xy_min_filter != AmdGpu::Filter::Bilinear &&
          sharp.xy_min_filter != AmdGpu::Filter::AnisoLinear)) {
@@ -3621,7 +3621,7 @@ bool Rasterizer::BindTexturesFromSet(const Shader::Info& stage, const PreparedSt
                                      u32 first_image_idx, bool& barrier, TextureSet*& slot) {
     const u32 count = static_cast<u32>(stage.images.size());
     if (!prepared || count == 0 || count > TextureSet::MaxImages ||
-        BbToggle::Disabled(BbToggle::TextureSetMemo) || FrameCapture::Active()) {
+        WocToggle::Disabled(WocToggle::TextureSetMemo) || FrameCapture::Active()) {
         return false;
     }
     for (const auto& image : stage.images) {
@@ -3659,7 +3659,7 @@ bool Rasterizer::BindTexturesFromSet(const Shader::Info& stage, const PreparedSt
         const auto& image = texture_cache.GetImage(entry.id);
         // Proxy entries need a current proxy; native entries of a proxied image go through
         // BindTextures, which may sample the proxy instead.
-        const bool proxies_on = !BbToggle::Disabled(BbToggle::SampleSceneProxies);
+        const bool proxies_on = !WocToggle::Disabled(WocToggle::SampleSceneProxies);
         if (image.backing != entry.backing || image.binding.needs_rebind ||
             image.binding.is_target || !texture_cache.IsUpToDate(entry.id) ||
             (entry.proxy ? !proxies_on ||
@@ -3704,10 +3704,10 @@ bool Rasterizer::BindTexturesFromSet(const Shader::Info& stage, const PreparedSt
 }
 
 RenderState Rasterizer::BeginRendering(const GraphicsPipeline* pipeline) {
-    BB_SECTION(BeginRendering);
-    // bbport: RenderStateMemo (see BeginMemo).
-    const bool memo_on = !BbToggle::Disabled(BbToggle::RenderStateMemo) && !FrameCapture::Active();
-    if (BbStats::enabled && ((begin_memo_hits + begin_memo_misses) & 0x3FFFF) == 0x3FFFF) {
+    WOC_SECTION(BeginRendering);
+    // wocport: RenderStateMemo (see BeginMemo).
+    const bool memo_on = !WocToggle::Disabled(WocToggle::RenderStateMemo) && !FrameCapture::Active();
+    if (WocStats::enabled && ((begin_memo_hits + begin_memo_misses) & 0x3FFFF) == 0x3FFFF) {
         std::printf("Render state memo: %llu hits, %llu misses; texture sets: %llu hits, %llu "
                     "misses\n",
                     static_cast<unsigned long long>(begin_memo_hits),
@@ -3780,7 +3780,7 @@ RenderState Rasterizer::BeginRenderingFull(const GraphicsPipeline* pipeline) {
     // A proxy attachment cannot represent MSAA or a feedback loop that reads the
     // same image through the guest's native descriptor during this draw.
     bool reduced = scene_started && upscaler->RasterScaling() && key.num_samples == 1;
-    // BB_SCENE_DEBUG=<file>: once the file exists, why the passes of one frame keep the
+    // WOC_SCENE_DEBUG=<file>: once the file exists, why the passes of one frame keep the
     // native size (see NoteFrameStart).
     const bool debug_pass = scene_debug_frame && scene_started;
     std::string why;
@@ -3793,7 +3793,7 @@ RenderState Rasterizer::BeginRenderingFull(const GraphicsPipeline* pipeline) {
     }
     // Only this pass's attachments: slots past the mask's width keep earlier passes' targets,
     // often the G-buffer images the lighting passes sample (bound), which kept those native.
-    const u32 num_attachments = BbToggle::Disabled(BbToggle::SceneAttachmentsOnly)
+    const u32 num_attachments = WocToggle::Disabled(WocToggle::SceneAttachmentsOnly)
                                     ? u32(cb_descs.size())
                                     : u32(std::bit_width(key.mrt_mask));
     // All attachments of a reduced pass share one proxy size (scene or half resolution).
@@ -3835,9 +3835,9 @@ RenderState Rasterizer::BeginRenderingFull(const GraphicsPipeline* pipeline) {
         std::printf("Scene pass: reduced %d %s\n", reduced, why.c_str());
     }
     push_data.scene_size = reduced ? SceneResolution::Pack(scene_targets->Size()) : 0;
-    if (BbStats::enabled) {
-        BbStats::reduced_draws.fetch_add(reduced, std::memory_order_relaxed);
-        BbStats::scene_draws.fetch_add(scene_started, std::memory_order_relaxed);
+    if (WocStats::enabled) {
+        WocStats::reduced_draws.fetch_add(reduced, std::memory_order_relaxed);
+        WocStats::scene_draws.fetch_add(scene_started, std::memory_order_relaxed);
     }
     RenderState state;
     state.width = instance.GetMaxFramebufferWidth();
@@ -3995,7 +3995,7 @@ RenderState Rasterizer::BeginRenderingFull(const GraphicsPipeline* pipeline) {
         state.depth_stencil_attachment = {};
     }
 
-    // bbport: a pass drawn into the upscaler's output-size images (UI, display pass): every
+    // wocport: a pass drawn into the upscaler's output-size images (UI, display pass): every
     // attachment must be redirected, viewports and scissors are scaled.
     target_scale = {1.0f, 1.0f};
     if (color_redirected || depth_redirected) {
@@ -4073,14 +4073,14 @@ RenderState Rasterizer::BeginRenderingFull(const GraphicsPipeline* pipeline) {
             db_desc.first ? &texture_cache.GetImage(db_desc.first).info : nullptr;
         FrameCapture::BeginPass(colors.data(), state.num_color_attachments, depth);
     }
-    // bbport: object motion vector attachment of G-buffer pipelines.
+    // wocport: object motion vector attachment of G-buffer pipelines.
     if (key.motion_vectors) {
         object_motion->Attach(state, state.width, state.height);
     }
     return state;
 }
 
-// bbport: frame analyzer (BB_CAPTURE_IMAGES): a render target's contents after a draw, read back
+// wocport: frame analyzer (WOC_CAPTURE_IMAGES): a render target's contents after a draw, read back
 // to a file once the GPU has done it. The pass is ended for the copy (debugging only).
 void Rasterizer::CaptureTargetContents(VideoCore::Image& image, u64 ps_hash) {
     if (!FrameCapture::WantsContents(image.info.guest_address, ps_hash) || !image.backing) {
@@ -4262,17 +4262,17 @@ void Rasterizer::FillBuffer(VAddr address, u32 num_bytes, u32 value, bool is_gds
                "FillBuffer address and size must be a multiple of 4 bytes");
     if (!is_gds) {
         texture_cache.ClearMeta(address);
-        // bbport BB_GUEST_IN_PLACE: memory the GPU uses in place is filled by the GPU in stream order
+        // wocport WOC_GUEST_IN_PLACE: memory the GPU uses in place is filled by the GPU in stream order
         // (a fill on the CPU now would land before earlier draws read the old data). Elsewhere
         // (VRAM copies, unbound memory: shader code, descriptors this thread reads) on the CPU in
         // decode order, as before; the VRAM copy follows through write tracking.
         if (!buffer_cache.IsAnyInPlace(address, num_bytes) &&
             !buffer_cache.IsRegionGpuModified(address, num_bytes) &&
             !VideoCore::BufferCache::LayerMirrored(address, num_bytes)) {
-            BbFreeCheck::Check(address, num_bytes, &value, BbFreeCheck::DmaFill);
+            WocFreeCheck::Check(address, num_bytes, &value, WocFreeCheck::DmaFill);
             u32* buffer = std::bit_cast<u32*>(address);
             std::fill(buffer, buffer + (num_bytes / sizeof(u32)), value);
-            BbWriteLog::Note(address, buffer, num_bytes, BbWriteLog::Dma);
+            WocWriteLog::Note(address, buffer, num_bytes, WocWriteLog::Dma);
             if (!VideoCore::WriteTracking()) {
                 NoteAssetWrite(address, num_bytes);
             }
@@ -4301,18 +4301,18 @@ bool Rasterizer::DmaMayWriteOnCpu(VAddr dst, u32 num_bytes) {
 
 void Rasterizer::CopyBuffer(VAddr dst, VAddr src, u32 num_bytes, bool dst_gds, bool src_gds) {
     DrainDrawPipe();
-    // bbport BB_GUEST_IN_PLACE: see FillBuffer (in place: the GPU, in stream order).
+    // wocport WOC_GUEST_IN_PLACE: see FillBuffer (in place: the GPU, in stream order).
     if (!dst_gds && !buffer_cache.IsAnyInPlace(dst, num_bytes) &&
         !buffer_cache.IsRegionGpuModified(dst, num_bytes) &&
         !VideoCore::BufferCache::LayerMirrored(dst, num_bytes)) {
-        // bbport BB_LAYER_MEMORY: a VRAM copy of the source may hold newer data than the game's memory.
+        // wocport WOC_LAYER_MEMORY: a VRAM copy of the source may hold newer data than the game's memory.
         if (!src_gds && !buffer_cache.IsRegionGpuModified(src, num_bytes) &&
             !VideoCore::BufferCache::LayerMirrored(src, num_bytes) &&
             !texture_cache.FindImageFromRange(src, num_bytes)) {
             // Both buffers were not transferred to GPU yet. Can safely copy in host memory.
-            BbFreeCheck::Check(dst, num_bytes, std::bit_cast<const void*>(src), BbFreeCheck::DmaCopy);
+            WocFreeCheck::Check(dst, num_bytes, std::bit_cast<const void*>(src), WocFreeCheck::DmaCopy);
             std::memcpy(std::bit_cast<void*>(dst), std::bit_cast<void*>(src), num_bytes);
-            BbWriteLog::Note(dst, std::bit_cast<const void*>(dst), num_bytes, BbWriteLog::Dma);
+            WocWriteLog::Note(dst, std::bit_cast<const void*>(dst), num_bytes, WocWriteLog::Dma);
             if (!VideoCore::WriteTracking()) {
                 NoteAssetWrite(dst, num_bytes);
             }
@@ -4394,8 +4394,8 @@ void Rasterizer::NoteCommandWrite(VAddr addr, const void* data, u64 size, bool r
 }
 
 void Rasterizer::OnCpuWrite(VAddr addr, u64 size) {
-    BbStats::cpu_write_notes.fetch_add(1, std::memory_order_relaxed);
-    BbStats::cpu_write_note_bytes.fetch_add(size, std::memory_order_relaxed);
+    WocStats::cpu_write_notes.fetch_add(1, std::memory_order_relaxed);
+    WocStats::cpu_write_note_bytes.fetch_add(size, std::memory_order_relaxed);
     if (IsMapped(addr, size)) {
         InvalidateAfterWrite(addr, size);
         buffer_cache.NoteCpuWriteRange(addr, size);
@@ -4467,7 +4467,7 @@ void Rasterizer::UnmapMemory(VAddr addr, u64 size) {
 }
 
 void Rasterizer::UpdateDynamicState(const GraphicsPipeline* pipeline, const bool is_indexed) const {
-    BB_SECTION(UpdateDynamicState);
+    WOC_SECTION(UpdateDynamicState);
     UpdateViewportScissorState();
     UpdateDepthStencilState();
     UpdatePrimitiveState(is_indexed);
@@ -4564,7 +4564,7 @@ void Rasterizer::UpdateViewportScissorState() const {
             const auto yoffset = vp_ctl.yoffset_enable ? vp.yoffset : 0.f;
             const auto yscale = vp_ctl.yscale_enable ? vp.yscale : 1.f;
 
-            // bbport: sub-pixel jitter of scene geometry for the temporal upscaler; the same
+            // wocport: sub-pixel jitter of scene geometry for the temporal upscaler; the same
             // shift as jittering the projection.
             viewport.x = (xoffset - xscale) * target_scale[0] + draw_jitter[0];
             viewport.y = (yoffset - yscale) * target_scale[1] + draw_jitter[1];
@@ -4863,11 +4863,11 @@ void Rasterizer::NoteFrameStart() {
     if (auto* profiler = GpuProfiler::Get()) {
         profiler->BeginFrame();
     }
-    const u64 frame = BbStats::gpu_frames.fetch_add(1, std::memory_order_relaxed) + 1;
-    // BB_BUFFER_STATS=1: how many earlier frames the GPU has not finished when the GPU thread
+    const u64 frame = WocStats::gpu_frames.fetch_add(1, std::memory_order_relaxed) + 1;
+    // WOC_BUFFER_STATS=1: how many earlier frames the GPU has not finished when the GPU thread
     // starts a frame — the lag that decides whether guest memory can be read in place.
     static const bool stats = [] {
-        const char* value = std::getenv("BB_BUFFER_STATS");
+        const char* value = std::getenv("WOC_BUFFER_STATS");
         return value && value[0] == '1';
     }();
     if (!stats) {

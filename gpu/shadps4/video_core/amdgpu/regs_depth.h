@@ -163,7 +163,7 @@ struct DepthRenderOverride {
     u32 preserve_compression : 1;
 };
 
-/// bbport: DB_ALPHA_TO_MASK: the pixel shader's alpha decides which samples it covers
+/// wocport: DB_ALPHA_TO_MASK: the pixel shader's alpha decides which samples it covers
 /// (alpha to coverage); the offsets dither that per pixel. WipEout's speed and weapon pads.
 struct AlphaToMask {
     u32 enable : 1;

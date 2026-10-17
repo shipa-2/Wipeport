@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-spec = importlib.util.spec_from_file_location("bbport_vulkan", ROOT / "launcher/bbport_vulkan.py")
+spec = importlib.util.spec_from_file_location("wocport_vulkan", ROOT / "launcher/wocport_vulkan.py")
 vulkan = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(vulkan)
 
@@ -22,8 +22,8 @@ class PackagedVulkanTests(unittest.TestCase):
         self.icds.mkdir()
         self.libs.mkdir()
         self.egl.mkdir()
-        self.env = {"BB_DATA_DIR": str(self.root / "data"),
-                    "BB_BUNDLED_VK_DRIVER_FILES": "/bundled/radeon.json:/bundled/intel.json",
+        self.env = {"WOC_DATA_DIR": str(self.root / "data"),
+                    "WOC_BUNDLED_VK_DRIVER_FILES": "/bundled/radeon.json:/bundled/intel.json",
                     "LD_LIBRARY_PATH": "/bundled/lib"}
 
     def library(self, name, bits=64):
@@ -43,7 +43,7 @@ class PackagedVulkanTests(unittest.TestCase):
 
     def test_amd_intel_keep_bundled_drivers(self):
         self.configure()
-        self.assertEqual(self.env["VK_DRIVER_FILES"], self.env["BB_BUNDLED_VK_DRIVER_FILES"])
+        self.assertEqual(self.env["VK_DRIVER_FILES"], self.env["WOC_BUNDLED_VK_DRIVER_FILES"])
         self.assertEqual(self.env["LD_LIBRARY_PATH"], "/bundled/lib")
         self.assertFalse((self.root / "data").exists())
 
@@ -97,7 +97,7 @@ class PackagedVulkanTests(unittest.TestCase):
         self.configure() # no NVIDIA ICD: AMD/Intel keep the package's EGL
         self.assertNotIn("__EGL_VENDOR_LIBRARY_FILENAMES", self.env)
         self.nvidia_host()
-        for env in ({"__EGL_VENDOR_LIBRARY_FILENAMES": "/user/vendor.json"}, {"BB_NVIDIA_EGL": "0"}):
+        for env in ({"__EGL_VENDOR_LIBRARY_FILENAMES": "/user/vendor.json"}, {"WOC_NVIDIA_EGL": "0"}):
             with self.subTest(env=env):
                 self.env.pop("__EGL_VENDOR_LIBRARY_FILENAMES", None)
                 self.env.pop("VK_DRIVER_FILES", None)
@@ -105,7 +105,7 @@ class PackagedVulkanTests(unittest.TestCase):
                 self.configure()
                 self.assertEqual(self.env.get("__EGL_VENDOR_LIBRARY_FILENAMES"),
                                  env.get("__EGL_VENDOR_LIBRARY_FILENAMES"))
-                self.env.pop("BB_NVIDIA_EGL", None)
+                self.env.pop("WOC_NVIDIA_EGL", None)
 
     def test_absolute_and_relative_icd_paths(self):
         driver = self.library("libGLX_nvidia.so.0")
@@ -120,7 +120,7 @@ class PackagedVulkanTests(unittest.TestCase):
         self.manifest()
         (self.icds / "broken_nvidia.json").write_text("not JSON")
         self.configure()
-        self.assertEqual(self.env["VK_DRIVER_FILES"], self.env["BB_BUNDLED_VK_DRIVER_FILES"])
+        self.assertEqual(self.env["VK_DRIVER_FILES"], self.env["WOC_BUNDLED_VK_DRIVER_FILES"])
 
     def test_additional_user_icds_are_not_lost(self):
         self.env["VK_ADD_DRIVER_FILES"] = "/user/extra.json"
@@ -131,7 +131,7 @@ class PackagedVulkanTests(unittest.TestCase):
     def test_host_driver_can_be_supplied_outside_hidden_nix_store(self):
         self.library("libGLX_nvidia.so.0")
         self.manifest("/nix/store/hidden/lib/libGLX_nvidia.so.0")
-        self.env["BB_NVIDIA_LIB_DIR"] = str(self.libs)
+        self.env["WOC_NVIDIA_LIB_DIR"] = str(self.libs)
         vulkan.configure(self.env, (self.icds,), ())
         self.assertIn("nvidia_icd.json", self.env["VK_DRIVER_FILES"])
 

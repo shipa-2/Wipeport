@@ -1,4 +1,4 @@
-// bbport: SDL3 window for the Vulkan swapchain (X11 or Wayland).
+// wocport: SDL3 window for the Vulkan swapchain (X11 or Wayland).
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -6,18 +6,18 @@
 #include "common/assert.h"
 #include "common/logging/log.h"
 #include "sdl_window.h"
-#include "bbport_overlay.h"
+#include "wocport_overlay.h"
 
 namespace Frontend {
 
 namespace {
 
-// Issue #69: the monitor the window (and fullscreen) goes to. BB_DISPLAY: its number in SDL's
-// order (1, 2, ...; bb-gpu-capabilities --displays lists them) or a part of its name; without it
+// Issue #69: the monitor the window (and fullscreen) goes to. WOC_DISPLAY: its number in SDL's
+// order (1, 2, ...; woc-gpu-capabilities --displays lists them) or a part of its name; without it
 // SDL's primary display. The monitors are logged so a report says which one was taken.
 SDL_DisplayID ChooseDisplay() {
     const SDL_DisplayID primary = SDL_GetPrimaryDisplay();
-    const char* wanted = std::getenv("BB_DISPLAY");
+    const char* wanted = std::getenv("WOC_DISPLAY");
     int count = 0;
     SDL_DisplayID* ids = SDL_GetDisplays(&count);
     SDL_DisplayID chosen = 0;
@@ -43,10 +43,10 @@ SDL_DisplayID ChooseDisplay() {
         const SDL_DisplayMode* mode = SDL_GetDesktopDisplayMode(ids[i]);
         std::printf("Display %d: %s %dx%d%s%s\n", i + 1, name ? name : "?", mode ? mode->w : 0,
                     mode ? mode->h : 0, ids[i] == primary ? " (primary)" : "",
-                    ids[i] == display ? " <- the game's (BB_DISPLAY)" : "");
+                    ids[i] == display ? " <- the game's (WOC_DISPLAY)" : "");
     }
     if (wanted && *wanted && !chosen) {
-        std::printf("Display: BB_DISPLAY=%s matches none, the primary one is used\n", wanted);
+        std::printf("Display: WOC_DISPLAY=%s matches none, the primary one is used\n", wanted);
     }
     SDL_free(ids);
     return display;
@@ -68,7 +68,7 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
     SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, height_);
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN, true);
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_VULKAN_BOOLEAN, true);
-    const char* fullscreen = std::getenv("BB_FULLSCREEN");
+    const char* fullscreen = std::getenv("WOC_FULLSCREEN");
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_FULLSCREEN_BOOLEAN, fullscreen && fullscreen[0] == '1');
     base_title = title;
     window = SDL_CreateWindowWithProperties(props);
@@ -150,7 +150,7 @@ void WindowSDL::UpdateTextTitle() {
     const std::string title = text_active ? base_title + " \u2014 " + text_prompt + ": " + text + "_  (Enter = OK, Esc = cancel)"
                                           : base_title;
     SDL_SetWindowTitle(window, title.c_str());
-    BbOverlay::SetTextPrompt(text_active, text_prompt, text);
+    WocOverlay::SetTextPrompt(text_active, text_prompt, text);
 }
 
 bool WindowSDL::PollEvents() {
@@ -164,7 +164,7 @@ bool WindowSDL::PollEvents() {
         }
     }
     if (!text_active) {
-        BbOverlay::UpdateTextInput(window);
+        WocOverlay::UpdateTextInput(window);
     }
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
@@ -192,14 +192,14 @@ bool WindowSDL::PollEvents() {
             UpdateTextTitle();
             continue;
         }
-        if (BbOverlay::HandleEvent(event)) {
+        if (WocOverlay::HandleEvent(event)) {
             continue;
         }
         // Mouse look: a click in the game takes the mouse (that click is not passed on as a
         // button: runtime_pad.c reads the buttons only while it is held); F1 and leaving the
         // window let it go.
         if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && !mouse_captured.load(std::memory_order_relaxed) &&
-            mouse_look.load(std::memory_order_relaxed) && !BbOverlay::MenuOpen()) {
+            mouse_look.load(std::memory_order_relaxed) && !WocOverlay::MenuOpen()) {
             CaptureMouse(true);
             continue;
         }
@@ -235,7 +235,7 @@ bool WindowSDL::PollEvents() {
     }
     // The menu, the name dialog and mouse_look=0 want the cursor.
     if (mouse_captured.load(std::memory_order_relaxed) &&
-        (BbOverlay::MenuOpen() || text_active || !mouse_look.load(std::memory_order_relaxed))) {
+        (WocOverlay::MenuOpen() || text_active || !mouse_look.load(std::memory_order_relaxed))) {
         CaptureMouse(false);
     }
     UpdateCursor();
@@ -246,7 +246,7 @@ bool WindowSDL::PollEvents() {
 // moving the mouse; always shown while the settings menu is open.
 void WindowSDL::UpdateCursor() {
     const bool fullscreen = (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0;
-    const bool hide = !BbOverlay::MenuOpen() &&
+    const bool hide = !WocOverlay::MenuOpen() &&
                       (fullscreen || SDL_GetTicks() - last_mouse_motion_ms > 3000);
     if (hide != cursor_hidden) {
         cursor_hidden = hide;

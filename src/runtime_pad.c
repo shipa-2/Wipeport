@@ -23,12 +23,12 @@
  * directions reach full deflection even when the two travels differ by a few percent (that
  * difference is what makes one direction run and the other only walk). A genuine pad keeps the
  * plain -32768..32767 -> -128..127 read. The stick is then converted as shadPS4 does, with an
- * inner/outer dead zone (BB_PAD_DEADZONE, default 5; BB_PAD_DEADZONE_OUTER, default 127) mapping
- * the axis' travel up to full deflection. BB_PAD_CENTER=lx,ly,rx,ry overrides the neutral,
- * BB_PAD_CENTER_CAL=0 disables the measurement. */
+ * inner/outer dead zone (WOC_PAD_DEADZONE, default 5; WOC_PAD_DEADZONE_OUTER, default 127) mapping
+ * the axis' travel up to full deflection. WOC_PAD_CENTER=lx,ly,rx,ry overrides the neutral,
+ * WOC_PAD_CENTER_CAL=0 disables the measurement. */
 #define _GNU_SOURCE
 #include "runtime.h"
-#include "gpu/bbgpu.h"
+#include "gpu/wocgpu.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -102,18 +102,18 @@ static void cal_load(void) {
     static int loaded;
     if (loaded) return;
     loaded=1;
-    const char *v=getenv("BB_PAD_CENTER_CAL"); cal_enabled=!(v && *v=='0');
+    const char *v=getenv("WOC_PAD_CENTER_CAL"); cal_enabled=!(v && *v=='0');
     /* Inner/outer dead zone, as shadPS4's analog_deadzone: [inner, outer] maps linearly to the
      * full deflection, so an axis with a reduced travel (outer below 127) reaches full. */
-    v=getenv("BB_PAD_DEADZONE"); pad_deadzone=v && *v ? atoi(v) : 5;
+    v=getenv("WOC_PAD_DEADZONE"); pad_deadzone=v && *v ? atoi(v) : 5;
     if (pad_deadzone<0) pad_deadzone=0; else if (pad_deadzone>126) pad_deadzone=126;
-    v=getenv("BB_PAD_DEADZONE_OUTER"); pad_deadzone_outer=v && *v ? atoi(v) : 127;
+    v=getenv("WOC_PAD_DEADZONE_OUTER"); pad_deadzone_outer=v && *v ? atoi(v) : 127;
     if (pad_deadzone_outer<=pad_deadzone) pad_deadzone_outer=pad_deadzone<127 ? pad_deadzone+1 : 127;
-    v=getenv("BB_PAD_CENTER");
+    v=getenv("WOC_PAD_CENTER");
     if (v && *v && sscanf(v,"%d,%d,%d,%d",&cal_manual_center[0],&cal_manual_center[1],
                           &cal_manual_center[2],&cal_manual_center[3])==4) {
         cal_manual=1;
-        printf("Runtime: pad center (BB_PAD_CENTER): lx=%d ly=%d rx=%d ry=%d\n",
+        printf("Runtime: pad center (WOC_PAD_CENTER): lx=%d ly=%d rx=%d ry=%d\n",
                cal_manual_center[0],cal_manual_center[1],cal_manual_center[2],cal_manual_center[3]);
     }
 }
@@ -180,8 +180,8 @@ static void cal_sample(const int16_t raw[4]) {
 }
 /* One stick axis in the PS4 0..255 scale. The neutral is subtracted and the axis' own travel
  * (cal_travel) is read as -128..127, so a full push reaches full deflection in both directions
- * whatever part of SDL's range the pad uses; the inner/outer dead zone (BB_PAD_DEADZONE /
- * BB_PAD_DEADZONE_OUTER) then maps that travel to the full deflection, as shadPS4 does. */
+ * whatever part of SDL's range the pad uses; the inner/outer dead zone (WOC_PAD_DEADZONE /
+ * WOC_PAD_DEADZONE_OUTER) then maps that travel to the full deflection, as shadPS4 does. */
 static uint8_t stick_axis(int axis,int16_t raw) {
     const int d=raw-cal_center[axis];
     const int travel=cal_travel(axis,d>=0 ? 1 : 0);
@@ -206,11 +206,11 @@ static void touch_click(PadData *d, int right) {
     d->touches[0]=(PadTouch){.x=right ? 1440 : 480,.y=471,.id=0};
 }
 
-/* BB_GAMEPAD (the launcher's controller choice): its SDL GUID, or part of its name. Issue #15:
+/* WOC_GAMEPAD (the launcher's controller choice): its SDL GUID, or part of its name. Issue #15:
  * wheels and other controllers connected for good came first. */
 static const char *preferred_gamepad(void) {
     static const char *want; static int read;
-    if (!read) { want=getenv("BB_GAMEPAD"); if (want && !*want) want=NULL; read=1; }
+    if (!read) { want=getenv("WOC_GAMEPAD"); if (want && !*want) want=NULL; read=1; }
     return want;
 }
 static int is_preferred(SDL_JoystickID id, const char *want) {
@@ -249,7 +249,7 @@ static SDL_Gamepad *current_gamepad(void) {
     }
     return gamepad;
 }
-/* Controls: what each PS4 input is bound to. Defaults below; bbport.ini (BB_CONFIG) lines
+/* Controls: what each PS4 input is bound to. Defaults below; wocport.ini (WOC_CONFIG) lines
  * key.<input>=<SDL key names> and pad.<input>=<SDL gamepad button names>, comma-separated,
  * replace an input's binding (empty: unbound). Inputs: the buttons (cross ... right, touchpad =
  * a left-side click, touchpad_right), and on the keyboard the sticks: move_* (left), look_*
@@ -333,7 +333,7 @@ static int key_from_name(const char *name) {
     const SDL_Scancode s=SDL_GetScancodeFromName(name);
     return s==SDL_SCANCODE_UNKNOWN ? -1 : (int)s;
 }
-/* Mouse look (bbport.ini): mouse_look=0 leaves the mouse alone; mouse_sensitivity (default 1:
+/* Mouse look (wocport.ini): mouse_look=0 leaves the mouse alone; mouse_sensitivity (default 1:
  * ~1000 pixels/s turn the camera at full speed), mouse_invert_y=1. */
 static int mouse_look=1, mouse_invert_y;
 static float mouse_sensitivity=1.0f;
@@ -341,7 +341,7 @@ static float mouse_sensitivity=1.0f;
 static void load_bindings(void) {
     bind_defaults();
     mouse_look=1; mouse_invert_y=0; mouse_sensitivity=1.0f;
-    const char *path=getenv("BB_CONFIG");
+    const char *path=getenv("WOC_CONFIG");
     FILE *f=path ? fopen(path,"r") : NULL;
     if (!f) return;
     char line[512];
@@ -443,7 +443,7 @@ static void apply_keyboard(PadData *d, const bool *k) {
  * the mouse's speed. Each sample adds the motion since the last one and the sum decays over
  * LOOK_TAU (linearly per sample: the level a steady speed holds, speed * gain * LOOK_TAU, is the
  * same at any frame rate). ~1000 pixels/s reach full deflection at sensitivity 1. The game ignores
- * small deflections, so a moving mouse starts past them (BB_MOUSE_DEADZONE, default 16 of 127):
+ * small deflections, so a moving mouse starts past them (WOC_MOUSE_DEADZONE, default 16 of 127):
  * slow aiming still turns the camera. While the mouse moves it replaces the right stick. */
 #define LOOK_TAU_US 60000.0f
 static float look_x, look_y;
@@ -462,7 +462,7 @@ static void apply_mouse_look(PadData *d, double dx, double dy, uint64_t now, int
     if (dt>LOOK_TAU_US) dt=LOOK_TAU_US;
     static int deadzone=-1;
     if (deadzone<0) {
-        const char *env=getenv("BB_MOUSE_DEADZONE");
+        const char *env=getenv("WOC_MOUSE_DEADZONE");
         deadzone=env && *env ? atoi(env) : 16;
         if (deadzone<0 || deadzone>100) deadzone=16;
     }
@@ -482,14 +482,14 @@ static void sample_host(PadData *d) {
     d->connected=1; d->connected_count=connected_count ? connected_count : 1;
     d->timestamp=now_us();
     SDL_Gamepad *g=current_gamepad();
-    if (!bindings_ready) { load_bindings(); bindings_ready=1; bbgpu_mouse_look_enable(mouse_look); }
+    if (!bindings_ready) { load_bindings(); bindings_ready=1; wocgpu_mouse_look_enable(mouse_look); }
     /* The mouse's motion and wheel since the last sample (always taken: none of it piles up while
      * the menu is open); it counts while the window holds the mouse. */
     double mouse_dx=0, mouse_dy=0;
     int wheel_up=0, wheel_down=0;
-    bbgpu_mouse_take(&mouse_dx,&mouse_dy,&wheel_up,&wheel_down);
-    const int captured=bbgpu_mouse_captured();
-    if (bbgpu_overlay_captures_input()) { apply_mouse_look(d,0,0,d->timestamp,0); return; } /* menu open: neutral input */
+    wocgpu_mouse_take(&mouse_dx,&mouse_dy,&wheel_up,&wheel_down);
+    const int captured=wocgpu_mouse_captured();
+    if (wocgpu_overlay_captures_input()) { apply_mouse_look(d,0,0,d->timestamp,0); return; } /* menu open: neutral input */
     const bool *k=SDL_WasInit(SDL_INIT_VIDEO) ? SDL_GetKeyboardState(NULL) : NULL;
     mouse_buttons=captured && SDL_WasInit(SDL_INIT_VIDEO) ? SDL_GetMouseState(NULL,NULL) : 0;
     mouse_wheel_step(d->timestamp,captured ? wheel_up : 0,captured ? wheel_down : 0);
@@ -530,17 +530,17 @@ static void sample_host(PadData *d) {
     apply_mouse_look(d,mouse_dx,mouse_dy,d->timestamp,captured);
 }
 
-/* BB_PAD_FILE=<file>: scripted input for automated runs. The file holds whitespace-separated
+/* WOC_PAD_FILE=<file>: scripted input for automated runs. The file holds whitespace-separated
  * tokens, re-read when it changes: button names (cross circle square triangle l1 r1 l2 r2 l3 r3
  * options touchpad touchpad_left touchpad_right up down left right) are held while listed;
  * touchpad defaults to a left-side click; lx= ly= rx= ry= (0..255) override
  * the sticks. An empty file releases everything. */
 static struct { uint32_t buttons; int stick[4]; int touch_side; } injected={0,{-1,-1,-1,-1},-1};
-static int replay_armed;      /* 1 while a BB_PAD_REPLAY recording plays, 2 once it ended */
+static int replay_armed;      /* 1 while a WOC_PAD_REPLAY recording plays, 2 once it ended */
 static uint64_t replay_start; /* 0: (re)start at the next sample */
 static void read_inject(void) {
     static const char *path; static int checked; static uint64_t last_check; static struct timespec mtime;
-    if (!checked) { path=getenv("BB_PAD_FILE"); checked=1; }
+    if (!checked) { path=getenv("WOC_PAD_FILE"); checked=1; }
     if (!path || !*path) return;
     uint64_t now=now_us();
     if (now-last_check<20000) return;
@@ -563,7 +563,7 @@ static void read_inject(void) {
     for (int i=0;i<4;++i) injected.stick[i]=-1;
     char token[64];
     while (fscanf(f,"%63s",token)==1) {
-        if (!strcmp(token,"replay") && replay_armed!=1) { replay_armed=1; replay_start=0; } /* BB_PAD_REPLAY */
+        if (!strcmp(token,"replay") && replay_armed!=1) { replay_armed=1; replay_start=0; } /* WOC_PAD_REPLAY */
         if (!strcmp(token,"touchpad_left") || !strcmp(token,"touchpad_right")) {
             injected.buttons|=BTN_TOUCHPAD;
             injected.touch_side=!strcmp(token,"touchpad_right");
@@ -575,9 +575,9 @@ static void read_inject(void) {
     printf("Runtime: pad file: buttons 0x%x sticks %d %d %d %d\n",injected.buttons,
            injected.stick[0],injected.stick[1],injected.stick[2],injected.stick[3]);
 }
-/* BB_PAD_RECORD=<file>: F9 starts and stops recording the pad state (gamepad or keyboard) with
- * the time since F9; BB_PAD_REPLAY=<file> plays such a recording back, started by the token
- * "replay" in BB_PAD_FILE (scripted tests repeat a route the player ran once). Lines: ms buttons
+/* WOC_PAD_RECORD=<file>: F9 starts and stops recording the pad state (gamepad or keyboard) with
+ * the time since F9; WOC_PAD_REPLAY=<file> plays such a recording back, started by the token
+ * "replay" in WOC_PAD_FILE (scripted tests repeat a route the player ran once). Lines: ms buttons
  * lx ly rx ry l2 r2, written when the state changes. */
 typedef struct { uint32_t ms, buttons; uint8_t axes[4], l2, r2; } PadSample;
 static FILE *record_file;
@@ -585,7 +585,7 @@ static uint64_t record_start;
 static PadSample record_last;
 static void record_sample(const PadData *d) {
     static const char *path; static int checked, f9_was_down;
-    if (!checked) { path=getenv("BB_PAD_RECORD"); checked=1; }
+    if (!checked) { path=getenv("WOC_PAD_RECORD"); checked=1; }
     if (!path || !*path || !sdl_ready) return;
     const bool *k=SDL_GetKeyboardState(NULL);
     const int f9=k && k[SDL_SCANCODE_F9];
@@ -617,7 +617,7 @@ static void replay_sample(PadData *d) {
         static int loaded;
         if (!loaded) {
             loaded=1;
-            const char *path=getenv("BB_PAD_REPLAY");
+            const char *path=getenv("WOC_PAD_REPLAY");
             FILE *f=path ? fopen(path,"r") : NULL;
             PadSample s; unsigned v[8]; size_t cap=0;
             while (f && fscanf(f,"%u %u %u %u %u %u %u %u",&v[0],&v[1],&v[2],&v[3],&v[4],&v[5],&v[6],&v[7])==8) {
@@ -660,7 +660,7 @@ static void touch_ids(PadData *d) {
 }
 static void sample(PadData *d) {
     sample_host(d);
-    if (bbgpu_overlay_captures_input()) return;
+    if (wocgpu_overlay_captures_input()) return;
     record_sample(d);
     read_inject();
     replay_sample(d);
