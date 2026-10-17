@@ -411,6 +411,8 @@ struct OpenXrHost::Impl {
     float ipd{0.063f};
     u32 frames_since_optics{};
     u32 fov_samples{};
+    // wocport: what the lenses show (xrLocateViews), for the part of a frame drawn wider.
+    std::optional<Fov> lens_fov;
 
     // The headset's own controllers, which stand in for a gamepad where the PC has none, or
     // has one that is not the one in use (see Input::PadSource).
@@ -1623,6 +1625,9 @@ struct OpenXrHost::Impl {
             return;
         }
         const auto seen = ParallelStereoFov(eye_views[0], eye_views[1]);
+        if (seen) {
+            lens_fov = seen;
+        }
         if (seen && ++fov_samples % 600 == 1) {
             runtime.NoteHeadsetFov(*seen);
         }
@@ -2090,11 +2095,30 @@ struct OpenXrHost::Impl {
         } else {
             orientation = {0.0f, 0.0f, 0.0f, 1.0f};
         }
-        const float angle_out = std::atan(shown.fov.tan_out);
-        const float angle_in = std::atan(shown.fov.tan_in);
-        const float angle_up = std::atan(shown.fov.tan_top);
-        const float angle_down = std::atan(shown.fov.tan_bottom);
+        // wocport: the title draws a frame at least as wide as the lenses (a symmetric one,
+        // Config::fov_symmetric): only the part the lenses show is handed over, with the
+        // lenses' own field of view. Cutting it out of the planar picture is exact, and the
+        // compositor gets what it would have asked for whether or not it honours another one.
+        const Fov& drawn = shown.fov;
+        Fov fov = drawn;
+        if (lens_fov) {
+            fov = {std::min(lens_fov->tan_out, drawn.tan_out), std::min(lens_fov->tan_in, drawn.tan_in),
+                   std::min(lens_fov->tan_top, drawn.tan_top),
+                   std::min(lens_fov->tan_bottom, drawn.tan_bottom)};
+        }
+        const float angle_out = std::atan(fov.tan_out);
+        const float angle_in = std::atan(fov.tan_in);
+        const float angle_up = std::atan(fov.tan_top);
+        const float angle_down = std::atan(fov.tan_bottom);
         const auto eye_width = static_cast<int32_t>(swapchain_width / 2);
+        const float width = static_cast<float>(eye_width);
+        const float height = static_cast<float>(swapchain_height);
+        const float drawn_width = drawn.tan_out + drawn.tan_in;
+        const float drawn_height = drawn.tan_top + drawn.tan_bottom;
+        const auto top = static_cast<int32_t>(
+            std::lround((drawn.tan_top - fov.tan_top) / drawn_height * height));
+        const auto bottom = static_cast<int32_t>(
+            std::lround((drawn.tan_top + fov.tan_bottom) / drawn_height * height));
 
         for (int eye = 0; eye < 2; ++eye) {
             const float side = eye == 0 ? -0.5f : 0.5f;
@@ -2108,10 +2132,17 @@ struct OpenXrHost::Impl {
             views[eye].fov.angleRight = eye == 0 ? angle_in : angle_out;
             views[eye].fov.angleUp = angle_up;
             views[eye].fov.angleDown = -angle_down;
+            // The temple side is the left edge of the left eye, the right edge of the right.
+            const float drawn_left = eye == 0 ? drawn.tan_out : drawn.tan_in;
+            const float shown_left = eye == 0 ? fov.tan_out : fov.tan_in;
+            const float shown_right = eye == 0 ? fov.tan_in : fov.tan_out;
+            const auto left = static_cast<int32_t>(
+                std::lround((drawn_left - shown_left) / drawn_width * width));
+            const auto right = static_cast<int32_t>(
+                std::lround((drawn_left + shown_right) / drawn_width * width));
             views[eye].subImage.swapchain = swapchain;
-            views[eye].subImage.imageRect.offset = {eye * eye_width, 0};
-            views[eye].subImage.imageRect.extent = {eye_width,
-                                                    static_cast<int32_t>(swapchain_height)};
+            views[eye].subImage.imageRect.offset = {eye * eye_width + left, top};
+            views[eye].subImage.imageRect.extent = {right - left, bottom - top};
         }
         projection.space = local_space;
         projection.viewCount = 2;

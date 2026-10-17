@@ -60,11 +60,14 @@ put `{"ipd_mm": 63}` in `user/vr.json` (in the user data folder).
 ## How frames reach the headset
 
 - The game draws each eye with the field of view it is told (`sceHmdGetFieldOfView`). The port
-  tells it the headset's own, as OpenXR reports it — for a Quest 2 under SteamVR
-  49°/45°/48°/50° (temple, nose, up, down) — and remembers it in `user/vr_headset_fov.json` for
-  the next start. Drawn with a PS VR's instead (`SHADPS4_VR_FOV_OF=psvr`), objects did not line
-  up between the eyes in a Quest 2.
-
+  tells it a symmetric one that encloses the headset's own, as OpenXR reports it (for a Quest 2
+  under SteamVR 49°/45°/48°/50° temple, nose, up, down: told 49°/49°/50°/50°), and remembers
+  the headset's in `user/vr_headset_fov.json` for the next start. The headset gets only the
+  part of each eye its lenses show, with their exact field of view.
+  Drawn with a PS VR's field of view, objects did not line up between the eyes in a Quest 2;
+  drawn with the Quest's asymmetric one, the right eye lost most of its picture on some tracks.
+  `SHADPS4_VR_FOV_SYMMETRIC=0` gives the game the asymmetric one, `SHADPS4_VR_FOV_OF=psvr` a
+  PS VR's.
 - The game renders both eyes into one texture array: layer 0 is the left eye, layer 1 the right.
   The port copies each layer to its eye's OpenXR swapchain.
 - On a PS4 the PS VR's processor unit warps the last frame to the head pose on every 120 Hz panel

@@ -116,13 +116,17 @@ struct Config {
     Fov fov{};
     /// The field of view the title is told of is the headset's own (as the host found it), not
     /// a PlayStation VR's; fov_scale applies to either.
-    /// wocport: on by default. The title draws the headset's own (asymmetric) frustum, so what
-    /// each eye shows does not depend on how the compositor maps another one onto the lenses
-    /// (with a PlayStation VR's, the eyes disagreed in a Quest 2 under SteamVR).
+    /// wocport: on by default, with fov_symmetric: the title draws a frustum enclosing the
+    /// headset's own, and the host cuts out what the lenses show, so what each eye shows does
+    /// not depend on how the compositor maps another field of view onto the lenses (with a
+    /// PlayStation VR's, the eyes disagreed in a Quest 2 under SteamVR).
     bool fov_from_headset{true};
     /// Use matching render bounds for both eyes, enclosing the detected headset frusta.
     /// This preserves binocular coverage when a standalone host narrows the view.
-    bool fov_symmetric{false};
+    /// wocport: on by default. WipEout drawn with a Quest 2's asymmetric field of view (45
+    /// degrees on the nose side, 49 on the temple's) lost most of the right eye's picture on
+    /// some tracks; the OpenXR host hands over only the part the lenses show.
+    bool fov_symmetric{true};
     float fov_scale{1.0f};
     /// Where the player's resting head position sits in tracker space. The PS Camera is the
     /// origin, so the player is placed a comfortable distance in front of it.
