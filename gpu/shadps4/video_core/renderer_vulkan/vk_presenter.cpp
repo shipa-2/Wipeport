@@ -353,10 +353,13 @@ void Presenter::PresentHmdFrame(const Libraries::VideoOut::HmdFrame& hmd, u32 fr
         return; // the headset shows nothing now
     }
     draw_scheduler.EndRendering();
+    // WipEout hands both eyes over as the two layers of one array texture (each descriptor's
+    // base_array names its layer): each eye is read from its own layer.
     struct Eye {
         vk::Image image;
         vk::Format format;
         u32 width, height;
+        u32 layer;
     };
     std::array<Eye, 2> eyes;
     for (u32 eye = 0; eye < 2; ++eye) {
@@ -364,7 +367,9 @@ void Presenter::PresentHmdFrame(const Libraries::VideoOut::HmdFrame& hmd, u32 fr
         runtime.Transit(&image, vk::ImageLayout::eTransferSrcOptimal,
                         vk::PipelineStageFlagBits2::eTransfer, vk::AccessFlagBits2::eTransferRead);
         eyes[eye] = {image.GetImage(), image.info.pixel_format, image.info.size.width,
-                     image.info.size.height};
+                     image.info.size.height,
+                     std::min<u32>(u32(hmd.eye_textures[eye].base_array),
+                                   image.info.resources.layers - 1)};
     }
     runtime.FlushBarriers();
     // The swapchain is sRGB (OpenXrHost::FrameFormat). Eyes the title keeps sRGB-encoded in an
@@ -398,9 +403,11 @@ void Presenter::PresentHmdFrame(const Libraries::VideoOut::HmdFrame& hmd, u32 fr
         cmdbuf.pipelineBarrier2({.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &to_write});
         for (u32 eye = 0; eye < 2; ++eye) {
             const vk::ImageSubresourceLayers layers{vk::ImageAspectFlagBits::eColor, 0, 0, 1};
+            const vk::ImageSubresourceLayers source{vk::ImageAspectFlagBits::eColor, 0,
+                                                    eyes[eye].layer, 1};
             if (copy) {
                 const vk::ImageCopy region{
-                    .srcSubresource = layers,
+                    .srcSubresource = source,
                     .dstSubresource = layers,
                     .dstOffset = {static_cast<s32>(eye * half), 0, 0},
                     .extent = {half, height, 1},
@@ -409,7 +416,7 @@ void Presenter::PresentHmdFrame(const Libraries::VideoOut::HmdFrame& hmd, u32 fr
                                  vk::ImageLayout::eTransferDstOptimal, region);
             } else {
                 const vk::ImageBlit region{
-                    .srcSubresource = layers,
+                    .srcSubresource = source,
                     .srcOffsets = std::array{vk::Offset3D{0, 0, 0},
                                              vk::Offset3D{static_cast<s32>(eyes[eye].width),
                                                           static_cast<s32>(eyes[eye].height), 1}},
