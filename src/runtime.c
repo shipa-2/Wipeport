@@ -222,7 +222,7 @@ uintptr_t runtime_resolve(const char *name, int is_data) {
         if (runtime_import_is(name, "djxxOmW6-aw#libkernel")) return (uintptr_t)&runtime_progname;
         return 0;
     }
-    /* Exact scoped imports (first seen in Bloodborne CUSA03173); the suffix identifies library/module. */
+    /* Exact scoped imports; the suffix identifies the library. */
     if (runtime_import_is(name, "bzQExy189ZI#libc")) return (uintptr_t)init_env;
     if (runtime_import_is(name, "8G2LB+A3rzg#libc")) return (uintptr_t)guest_atexit;
     if (runtime_import_is(name, "tsvEmnenz48#libc")) return (uintptr_t)guest_cxa_atexit;

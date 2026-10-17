@@ -8,7 +8,6 @@ the order the loader resolves them:
   runtime   the port's runtime (src/runtime*.c): "NID#library" comparisons, and the export
             tables by the name src/import_names.inc gives that NID in that library
   gpu       the GPU library (gpu/shadps4/core/libraries, the libraries bbgpu.cpp registers)
-  online    the online module (gpu/bbnet, BB_ONLINE=1 only)
   shadps4   a shadPS4 tree given with --shadps4 (AstroQuest's): an implementation to port,
             'stub' where its body only logs "(STUBBED)" or returns at once
 
@@ -107,7 +106,6 @@ def main():
         shadps4 = lib_functions(args.shadps4 / 'core/libraries')
     runtime_keys, runtime_names = runtime_implemented()
     gpu = lib_functions(ROOT / 'gpu/shadps4/core/libraries', GPU_LIBRARIES)
-    online = lib_functions(ROOT / 'gpu/bbnet')
 
     rows = []
     for scoped in unresolved:
@@ -127,8 +125,6 @@ def main():
             status = 'runtime'
         elif nid in gpu:
             status = 'gpu'
-        elif nid in online:
-            status = 'online'
         elif nid in shadps4:
             status = 'shadps4-stub' if shadps4[nid][3] else 'shadps4'
         else:
@@ -136,7 +132,7 @@ def main():
         source = (shadps4.get(nid) or ('', '', '', False))[1]
         rows.append(dict(scoped=scoped, nid=nid, name=name, library=library, status=status, source=source))
 
-    order = ('runtime', 'gpu', 'online', 'shadps4', 'shadps4-stub', 'missing')
+    order = ('runtime', 'gpu', 'shadps4', 'shadps4-stub', 'missing')
     by_library = collections.defaultdict(collections.Counter)
     for row in rows:
         by_library[row['library']][row['status']] += 1

@@ -1,6 +1,4 @@
 #include "bbport_write_log.h"
-#include "bbport_game_menu.h"
-#include "bbport_gnm_hooks.h"
 // bbport: glue between the C loader and the vendored shadPS4 video core.
 #include "bbport_overlay.h"
 #include "bbport_settings.h"
@@ -281,6 +279,13 @@ extern "C" int bbgpu_init(const BbGpuConfig* config) {
     BbSettings::Load();
     // What the translator knows about this game (games/), before anything asks for it.
     Game::Select(config->serial);
+    // BB_RENDERDOC=1: RenderDoc's library before the Vulkan instance; captures go to out/rdoc.
+    VideoCore::LoadRenderDoc();
+    if (VideoCore::IsRenderDocLoaded()) {
+        std::filesystem::create_directories("out/rdoc");
+        VideoCore::SetOutputDir(std::filesystem::absolute("out/rdoc"), "woc");
+        std::printf("RenderDoc: loaded; touch $BB_RENDERDOC_TRIGGER to capture a frame\n");
+    }
     // A frame the temporal upscaler does not know is left as the game draws it: the setting is
     // off whatever bbport.ini or the menu says (as BB_UPSCALER=none), for every part reading it.
     if (!Game::SceneUpscaler()) {
@@ -378,15 +383,6 @@ extern "C" int bbgpu_handle_fault(void* ucontext, void* address) {
     return BbFreeCheck::OnStaleTrapFault(reinterpret_cast<std::uint64_t>(address)) ? 1 : 0;
 }
 
-extern "C" void bbgpu_patch_image(unsigned char* image, uint64_t size) {
-    // The Gnm census and the in-game settings pages hook Bloodborne 1.09's code only.
-    if (!Game::PortImageHooks()) {
-        return;
-    }
-    BbGnmHooks::PatchImage(image, size);
-    BbGameMenu::PatchImage(image, size);
-}
-
 extern "C" unsigned bbgpu_symbol_count(void) {
     return unsigned(g_symbols.size());
 }
@@ -428,19 +424,7 @@ int* PS4_SYSV_ABI __Error() {
 }
 } // namespace Libraries::Kernel
 
-// RenderDoc capture hooks: not used by the port.
-namespace VideoCore {
-void LoadRenderDoc() {}
-void StartCapture() {}
-void EndCapture() {}
-void TriggerCapture() {}
-void SetOutputDir(const std::filesystem::path&, const std::string&) {}
-bool IsRenderDocLoaded() { return false; }
-void RequestScreenshot(ScreenshotRequest) {}
-u32 ConsumeGameOnlyScreenshotRequests() { return 0; }
-u32 ConsumeWithOverlaysScreenshotRequests() { return 0; }
-ScreenshotRequests ConsumeScreenshotRequests() { return {}; }
-} // namespace VideoCore
+
 
 extern "C" int bbgpu_overlay_captures_input(void) {
     return BbOverlay::CapturesInput() ? 1 : 0;

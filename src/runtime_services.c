@@ -372,8 +372,7 @@ static ABI int32_t trophy_info(int32_t ctx,int32_t handle,int32_t id,void *detai
     (void)id; return trophy_game_info(ctx,handle,details,data);
 }
 
-/* ---- WipEout's PSN and network imports, offline (BB_ONLINE=1 gives them to the online
- * module first). Contexts and requests get IDs; what would ask PSN answers "signed out";
+/* ---- WipEout's PSN and network imports, offline. Contexts and requests get IDs; what would ask PSN answers "signed out";
  * callbacks are registered and never called; statistics read as an unused pool. Where the
  * structure a call fills is not known for certain (shadPS4 stubs it), nothing is written and
  * an error is returned. ---- */
@@ -723,8 +722,6 @@ static const RuntimeExport exports[]={
     {"sceVoiceInit",ok_void}, {"sceVoiceEnd",ok_void},
 };
 uintptr_t runtime_services_resolve(const char *name) {
-    const uintptr_t online=runtime_net_resolve(name); /* BB_ONLINE=1: the online module first */
-    if (online) return online;
     /* No public name for this DiscMap NID: compared directly. */
     if (runtime_import_is(name, "fJgP+wqifno#libSceDiscMap")) return (uintptr_t)discmap_7c98;
     return RUNTIME_LOOKUP(exports,name);

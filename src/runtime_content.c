@@ -82,9 +82,7 @@ static ABI int32_t param_int(uint32_t id,int32_t *out) {
 #define ADDON_INSTALLED 4u
 typedef struct { char label[LABEL_SIZE]; char padding[3]; uint32_t status; } AddonInfo;
 /* Add-ons are the folders <user>/addcont/<title id>/<entitlement label> (shadPS4's layout),
- * each reported as installed. No add-on data is mounted: Bloodborne: The Old Hunters
- * (SPEXPANSIONDLC03) needs only the entitlement, its data ships with patch 1.09. Without a list
- * the count is returned, with one at most capacity entries are written. Never touch unused list
+ * each reported as installed. No add-on data is mounted. Without a list the count is returned, with one at most capacity entries are written. Never touch unused list
  * slots. */
 static ABI int32_t addon_list(uint32_t service,void *list,uint32_t capacity,uint32_t *hits) {
     require_initialized();

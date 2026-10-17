@@ -118,8 +118,8 @@ State state;
 VAddr AllocateScratch() {
     using Allocate = int32_t PS4_SYSV_ABI (*)(int64_t, int64_t, u64, u64, int, int64_t*);
     using Map = int32_t PS4_SYSV_ABI (*)(void**, u64, int, int, int64_t, u64);
-    const auto allocate = reinterpret_cast<Allocate>(runtime_memory_resolve("rTXw65xmLIA#p#J"));
-    const auto map = reinterpret_cast<Map>(runtime_memory_resolve("L-Q3LEjIbgA#p#J"));
+    const auto allocate = reinterpret_cast<Allocate>(runtime_memory_resolve("rTXw65xmLIA#libkernel"));
+    const auto map = reinterpret_cast<Map>(runtime_memory_resolve("L-Q3LEjIbgA#libkernel"));
     if (!allocate || !map) {
         return 0;
     }

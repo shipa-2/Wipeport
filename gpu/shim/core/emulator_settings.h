@@ -66,7 +66,8 @@ public:
     bool IsPipelineCacheEnabled() { static const auto value = Flag("BB_PIPELINE_CACHE", true); return value; }
     bool IsRcasEnabled() { static const auto value = Flag("BB_RCAS", true); return value; }
     bool IsReadbackLinearImagesEnabled() { static const auto value = Flag("BB_READBACK_LINEAR", false); return value; }
-    bool IsRenderdocEnabled() { return false; }
+    // BB_RENDERDOC=1: RenderDoc's library is loaded; BB_RENDERDOC_TRIGGER (a file) captures a frame.
+    bool IsRenderdocEnabled() { static const auto value = Flag("BB_RENDERDOC", false); return value; }
     bool IsShaderCollect() { return false; }
     bool IsUserfaultfdTracking() { return false; }
     bool IsVkCrashDiagnosticEnabled() { return false; }

@@ -192,6 +192,13 @@ void Liverpool::Process(std::stop_token stoken) {
             break;
         }
 
+        // BB_RENDERDOC_TRIGGER: the file's appearance captures the next frame (RenderDoc).
+        if (VideoCore::IsRenderDocLoaded()) {
+            static const char* trigger = std::getenv("BB_RENDERDOC_TRIGGER");
+            if (trigger && std::remove(trigger) == 0) {
+                VideoCore::TriggerCapture();
+            }
+        }
         VideoCore::StartCapture();
 
         curr_qid = -1;

@@ -27,7 +27,7 @@ class LinkTests(unittest.TestCase):
     def run_link(self,main,libc,code=b'\xc3'):
         with tempfile.TemporaryDirectory() as tmp:
             out=Path(tmp)
-            (out/'boot.bin').write_bytes(package(code,names=['fixture#q#q'],capabilities=1))
+            (out/'boot.bin').write_bytes(package(code,names=['fixture#libc'],capabilities=1))
             with patch.object(link_libc,'module',side_effect=[main,libc]):
                 link_libc.link(Path('fixture-game'),out)
             return (out/'boot-libc.bin').read_bytes(),json.loads((out/'libc-link.json').read_text())
@@ -36,7 +36,7 @@ class LinkTests(unittest.TestCase):
         data,report=self.run_link(*self.fixture())
         self.assertEqual(data[:8],b'BBPROBE4')
         self.assertEqual(report['symbol_bindings'],[
-            dict(import_name='fixture#q#q',address='0x10010',kind=1)])
+            dict(import_name='fixture#libc',address='0x10010',kind=1)])
 
     def test_same_nid_wrong_library_version_does_not_bind(self):
         _,report=self.run_link(*self.fixture(version=2))

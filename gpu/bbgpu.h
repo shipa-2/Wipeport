@@ -37,8 +37,6 @@ int bbgpu_overlay_captures_input(void);
 void bbgpu_mouse_take(double *dx, double *dy, int *wheel_up, int *wheel_down);
 int bbgpu_mouse_captured(void);
 void bbgpu_mouse_look_enable(int enabled);
-/* Patches the loaded image before the game runs (image still writable): libGnm entry hooks. */
-void bbgpu_patch_image(unsigned char *image, uint64_t size);
 /* Number of symbols registered by the vendored libraries (diagnostics). */
 unsigned bbgpu_symbol_count(void);
 #ifdef __cplusplus

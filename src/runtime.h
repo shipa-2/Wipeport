@@ -65,23 +65,13 @@ void runtime_content_report(void);
 typedef struct { const char *name; void *function; } RuntimeExport;
 #define RUNTIME_LOOKUP(table, nid) runtime_lookup(table, sizeof(table)/sizeof(*(table)), nid)
 /* Import names are "NID#library" (scripts/link_modules.py writes the library's name, the same
- * in every game). The two-letter spelling "NID#q#q" of Bloodborne's eboot (its own indices into
- * its library table) is still read, through that eboot's table (runtime.c LEGACY_LIBRARIES).
- * Whether an import is the given "NID#library": */
+ * in every game). Whether an import is the given "NID#library": */
 int runtime_import_is(const char *scoped, const char *nid_library);
 const char *runtime_symbol(const char *nid);
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *nid);
 uintptr_t runtime_kernel_resolve(const char *name);
 uintptr_t runtime_file_resolve(const char *name);
 uintptr_t runtime_services_resolve(const char *name);
-/* Online play (runtime_net.c, BB_ONLINE=1): the online module answers the network and PSN imports. */
-void runtime_net_configure(const char *app0, const char *serial, const char *title, const char *version);
-int runtime_net_enabled(void);
-int runtime_net_symbol(const char *symbol);
-uintptr_t runtime_net_resolve(const char *name);
-/* Guest threads for host code (the online module's NP threads); 0 or a positive errno value. */
-int32_t runtime_thread_spawn(void **thread, void *(ABI *entry)(void *), void *argument, uint64_t stack, const char *name);
-int32_t runtime_thread_join_spawned(void *thread, void **result);
 void runtime_file_report(void);
 void runtime_file_configure(const char *app0, const char *user);
 int runtime_file_mount(const char *guest, const char *host);

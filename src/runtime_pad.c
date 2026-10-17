@@ -249,31 +249,6 @@ static SDL_Gamepad *current_gamepad(void) {
     }
     return gamepad;
 }
-/* bbport (frame stats): the game's libc heap, read every 5 s from a game thread (it reads the pad)
- * with libc.prx's malloc_stats (export stub at libc.prx+0x1f8c0 in Bloodborne's; malloc_stats_fast returns 1 in this libc):
- * in use now and at most, and what it took from the system. A heap that keeps growing is a leak. */
-typedef struct { uint16_t size, version; uint32_t reserved; uint64_t max_system, system, max_in_use, in_use; } MallocManagedSize;
-static void report_guest_heap(void) {
-    static int enabled=-1; static uint64_t last;
-    if (enabled<0) enabled=getenv("BB_FRAME_STATS")!=NULL;
-    const uint64_t now=now_us();
-    if (!enabled || now-last<5000000) return;
-    last=now;
-    /* Bloodborne's libc.prx (the stub's offset is that libc's): another game's libc is elsewhere
-     * and has other code there, which the check below turns away. */
-    const uintptr_t libc=runtime_module_base("libc.prx");
-    if (!libc) return;
-    const uint8_t *stub=(const uint8_t *)(libc+0x1f8c0);
-    if (stub[0]!=0xff || stub[1]!=0x25) return; /* another libc */
-    ABI int (*stats)(MallocManagedSize *)=(ABI int (*)(MallocManagedSize *))(uintptr_t)stub;
-    MallocManagedSize m={.size=sizeof(m),.version=1};
-    const int result=stats(&m);
-    if (result!=0) { static int told; if (!told++) printf("Guest heap: malloc_stats returned %#x\n",(unsigned)result); return; }
-    {
-        printf("Guest heap: %.1f MB in use (most %.1f), %.1f MB from the system (most %.1f)\n",
-               m.in_use/1048576.0,m.max_in_use/1048576.0,m.system/1048576.0,m.max_system/1048576.0);
-    }
-}
 /* Controls: what each PS4 input is bound to. Defaults below; bbport.ini (BB_CONFIG) lines
  * key.<input>=<SDL key names> and pad.<input>=<SDL gamepad button names>, comma-separated,
  * replace an input's binding (empty: unbound). Inputs: the buttons (cross ... right, touchpad =
@@ -501,7 +476,6 @@ static void apply_mouse_look(PadData *d, double dx, double dy, uint64_t now, int
 }
 
 static void sample_host(PadData *d) {
-    report_guest_heap();
     memset(d,0,sizeof(*d));
     d->left_x=d->left_y=d->right_x=d->right_y=128;
     d->orientation[3]=1.0f;

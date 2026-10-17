@@ -14,17 +14,6 @@ import games
 from test_prepare import fixture
 
 
-def dcx(payload, packed=None):
-    """A DFLT .dcx file as the game's (sizes big-endian, zlib data at 0x4C)."""
-    packed = zlib.compress(payload) if packed is None else packed
-    header = bytearray(0x4C)
-    header[0:4], header[0x18:0x1C], header[0x24:0x28], header[0x28:0x2C] = (
-        b'DCX\0', b'DCS\0', b'DCP\0', b'DFLT')
-    struct.pack_into('>II', header, 0x1C, len(payload), len(packed))
-    header[0x44:0x48] = b'DCA\0'
-    return bytes(header) + packed
-
-
 def param_sfo(entries):
     """A minimal param.sfo with UTF-8 string entries."""
     keys = b''.join(k.encode() + b'\0' for k in entries)
@@ -39,13 +28,6 @@ def param_sfo(entries):
         key_off += len(key) + 1
         data_off += len(value)
     return bytes(data + keys + b''.join(values))
-
-
-def bloodborne_image(image_hash, **fields):
-    """games.GAMES with Bloodborne's supported image (or other fields) replaced."""
-    replaced = dataclasses.replace(games.BLOODBORNE, image=image_hash, **fields)
-    return mock.patch.object(games, 'GAMES', tuple(replaced if g is games.BLOODBORNE else g
-                                                   for g in games.GAMES))
 
 
 def psarc(entries, block=0x10000):
@@ -79,64 +61,14 @@ class GameCheckTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_base_game_without_the_update(self):
-        self.assertEqual(game_check.problem(self.game('CUSA03173', '01.00')),
-                         ('missing_update', 'CUSA03173', '01.00'))
-
     def test_update_metadata_with_an_old_executable(self):
-        self.assertEqual(game_check.problem(self.game('CUSA03173', '01.09'))[0], 'wrong_eboot')
+        self.assertEqual(game_check.problem(self.game('CUSA05670', '01.07'))[0], 'wrong_eboot')
 
-    def test_other_edition(self):
-        # The EU alpha test: not a retail release.
-        self.assertEqual(game_check.problem(self.game('CUSA01322', '01.09'))[0], 'other_title')
+    def test_other_title(self):
+        self.assertEqual(game_check.problem(self.game('CUSA03173', '01.09'))[0], 'other_title')
 
     def test_unreadable_executable(self):
-        self.assertEqual(game_check.problem(self.game('CUSA03173', '01.09', b'junk'))[0], 'unreadable')
-
-    def test_supported_image_passes(self):
-        game = self.game('CUSA03173', '01.09')
-        with bloodborne_image(game_check.image_sha256(game)):
-            self.assertIsNone(game_check.problem(game))
-
-    def shaders(self, game, data):
-        folder = game / game_check.CHECKED_FOLDER
-        folder.mkdir(parents=True, exist_ok=True)
-        (folder / 'gxshader.shaderbnd.dcx').write_bytes(data)
-
-    def test_intact_shaders_pass(self):
-        game = self.game('CUSA03173', '01.09')
-        self.shaders(game, dcx(bytes(range(256)) * 64))
-        with bloodborne_image(game_check.image_sha256(game)):
-            self.assertIsNone(game_check.problem(game))
-
-    def test_damaged_shaders(self):
-        # As LibOrbisPkg on .NET 6+ (issue #81): part of the data replaced by stale bytes.
-        game = self.game('CUSA03173', '01.09')
-        packed = bytearray(zlib.compress(os.urandom(4096)))
-        packed[len(packed) // 2:] = packed[:len(packed) - len(packed) // 2]
-        self.shaders(game, dcx(os.urandom(4096), bytes(packed)))
-        with bloodborne_image(game_check.image_sha256(game)):
-            self.assertEqual(game_check.problem(game)[0], 'damaged_files')
-        self.assertEqual(game_check.broken_files(game),
-                         [f'{game_check.CHECKED_FOLDER}/gxshader.shaderbnd.dcx'])
-
-    def test_other_compressions_are_not_checked(self):
-        game = self.game('CUSA03173', '01.09')
-        data = bytearray(dcx(b'x' * 100))
-        data[0x28:0x2C] = b'KRAK'
-        self.shaders(game, bytes(data[:0x50]))
-        self.assertEqual(game_check.broken_files(game), [])
-
-    def test_every_retail_base_game_without_the_update(self):
-        for title in games.BLOODBORNE.serials:
-            with self.subTest(title=title):
-                self.assertEqual(game_check.problem(self.game(title, '01.00'))[0], 'missing_update')
-
-    def test_eboot_with_the_60fps_patch(self):
-        game = self.game('CUSA00900', '01.09')
-        patched = {game_check.image_sha256(game): 'patched_eboot'}
-        with bloodborne_image(games.BLOODBORNE.image, other_images=patched):
-            self.assertEqual(game_check.problem(game)[0], 'patched_eboot')
+        self.assertEqual(game_check.problem(self.game('CUSA05670', '01.07', b'junk'))[0], 'unreadable')
 
     def test_wipeout_base_game_without_the_update(self):
         self.assertEqual(game_check.problem(self.game('CUSA05670', '01.00')),
@@ -146,14 +78,14 @@ class GameCheckTests(unittest.TestCase):
         # The base game's own param.sfo says 01.00; a folder whose sfo was replaced says 01.07.
         game = self.game('CUSA05670', '01.07')
         wipeout = dataclasses.replace(games.WIPEOUT, base_image=game_check.image_sha256(game))
-        with mock.patch.object(games, 'GAMES', (wipeout, games.BLOODBORNE)):
+        with mock.patch.object(games, 'GAMES', (wipeout,)):
             self.assertEqual(game_check.problem(game)[0], 'missing_update')
 
     def wipeout(self, archive):
         game = self.game('CUSA05670', '01.07')
         (game / 'data00.psarc').write_bytes(archive)
         wipeout = dataclasses.replace(games.WIPEOUT, image=game_check.image_sha256(game))
-        return game, mock.patch.object(games, 'GAMES', (wipeout, games.BLOODBORNE))
+        return game, mock.patch.object(games, 'GAMES', (wipeout,))
 
     def test_wipeout_intact_archives_pass(self):
         data = bytes(range(256)) * 64
@@ -177,12 +109,11 @@ class GameCheckTests(unittest.TestCase):
 
     def test_skip_switch(self):
         os.environ['BB_SKIP_GAME_CHECK'] = '1'
-        self.assertIsNone(game_check.problem(self.game('CUSA03173', '01.00')))
+        self.assertIsNone(game_check.problem(self.game('CUSA05670', '01.00')))
 
     def test_every_problem_is_explained(self):
-        for kind in ('missing_update', 'wrong_eboot', 'patched_eboot', 'other_title',
-                     'unreadable', 'damaged_files'):
-            self.assertIn('CUSA', game_check.explain(kind, 'CUSA03173', '01.00'))
+        for kind in ('missing_update', 'wrong_eboot', 'other_title', 'unreadable', 'damaged_files'):
+            self.assertIn('CUSA', game_check.explain(kind, 'CUSA05670', '01.00'))
 
 
 if __name__ == '__main__':

@@ -12,7 +12,6 @@
 #include "video_core/buffer_cache/buffer.h"
 #include "video_core/renderdoc.h"
 #include "video_core/renderer_vulkan/vk_platform.h"
-#include "bbport_game_menu.h"
 #include "bbport_overlay.h"
 #include "bbport_timeline.h"
 #include "video_core/renderer_vulkan/vk_temporal_upscaler.h"
@@ -543,10 +542,18 @@ Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& 
     expected_ratio = static_cast<float>(image_size.width) / static_cast<float>(image_size.height);
 
     // Vulkan has no sRGB variant of the 10-bit format, so an A2R10G10B10Srgb buffer reaches
-    // the post process pass still sRGB encoded and has to be decoded there instead.
+    // the post process pass still sRGB encoded and has to be decoded there instead. A plain
+    // A2R10G10B10 buffer holds what the display shows as well (WipEout tonemaps into it): the
+    // post process encoded it a second time, a washed-out, overexposed picture.
+    // BB_DISPLAY_10BIT_LINEAR=1: the old reading (the buffer linear, encoded here).
+    static const bool linear_10bit = [] {
+        const char* env = std::getenv("BB_DISPLAY_10BIT_LINEAR");
+        return env && env[0] == '1';
+    }();
+    const auto format = attribute.attrib.pixel_format;
     pp_settings.srgb_input =
-        !source &&
-        attribute.attrib.pixel_format == Libraries::VideoOut::PixelFormat::A2R10G10B10Srgb;
+        !source && (format == Libraries::VideoOut::PixelFormat::A2R10G10B10Srgb ||
+                    (!linear_10bit && format == Libraries::VideoOut::PixelFormat::A2R10G10B10));
 
     // Numbered here, in command order; marked where the commands are recorded.
     const u32 stream = draw_scheduler.CrumbStream();
@@ -810,7 +817,6 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
                          MakeImageBlitFit(frame->width, frame->height, extent.width, extent.height),
                          vk::Filter::eLinear);
         // bbport: the settings menu / FPS counter over the frame, at display resolution.
-        BbGameMenu::Poll(); // the port's pages in the game's System menu
         const bool overlay = BbOverlay::Visible();
         const std::array post_barriers{
             vk::ImageMemoryBarrier{

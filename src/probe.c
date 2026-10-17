@@ -75,7 +75,7 @@ static void check_cpu(void) {
     }
     if (!missing[0]) return;
     fprintf(stderr,
-            "ERROR: this CPU lacks %s. Bloodborne's code was compiled for the PS4's CPU and uses "
+            "ERROR: this CPU lacks %s. The game's code was compiled for the PS4's CPU and uses "
             "these instructions directly: it needs an Intel Haswell (4th generation Core, 2013) or "
             "newer, or an AMD Ryzen. BB_SKIP_CPU_CHECK=1 starts anyway.\n", missing);
     exit(1);
@@ -378,11 +378,6 @@ int main(int argc, char **argv) {
         snprintf(sfo,sizeof(sfo),"%s/sce_sys/param.sfo",app0);
         if (sfo_value(sfo,"INSTALL_DIR_SAVEDATA",id,sizeof(id),NULL) || sfo_value(sfo,"TITLE_ID",id,sizeof(id),NULL))
             runtime_savedata_configure(id);
-        char serial[16]="", title[128]="", version[16]="";
-        sfo_value(sfo,"TITLE_ID",serial,sizeof(serial),NULL);
-        sfo_value(sfo,"TITLE",title,sizeof(title),NULL);
-        sfo_value(sfo,"APP_VER",version,sizeof(version),NULL);
-        runtime_net_configure(app0,serial,title,version);
     }
     bbgpu_register_kernel();
 #ifdef _WIN32
@@ -546,7 +541,6 @@ int main(int argc, char **argv) {
         memcpy(image + relocs[i].target, &value, 8);
     }
     if (patch_file) apply_patches(patch_file, segments, ns, relocs, nr);
-    if (!cpu_only) bbgpu_patch_image(image, size);
     protect(traps, round_page((import_count + 1) * 32), 5);
     protect(image, round_page(size), 0);
     int executable_entry = 0;

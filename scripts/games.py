@@ -19,10 +19,8 @@ class Game:
     serials: tuple
     version: str  # APP_VER of the update the toolkit runs
     image: str  # SHA-256 of that update's loaded eboot.bin image (game_check.image_sha256)
-    # The game's data: 'dcx' (Bloodborne's dvdroot_ps4, DCX files) or 'psarc' (archives at the root).
-    data: str
+    data: str  # 'psarc': archives at the root of the game folder
     data_root: str = ''  # relative to the game folder
-    patches: Path | None = None  # built-in shadPS4-format patch file, None: none yet
     other_images: dict = field(default_factory=dict)  # known bad images: hash -> problem kind
     base_image: str = ''  # the base game's image (1.00): the update is missing
 
@@ -38,22 +36,8 @@ WIPEOUT = Game(
     data='psarc',
 )
 
-BLOODBORNE = Game(
-    key='bloodborne',
-    name='Bloodborne',
-    serials=('CUSA00900', 'CUSA00207', 'CUSA00208', 'CUSA00299', 'CUSA01363',
-             'CUSA03179', 'CUSA03173', 'CUSA03014', 'CUSA03023'),
-    version='01.09',
-    image='071df19c8880086d97182dbc057bc8cb37badaca57d9112683836b24a0444c0a',
-    data='dcx',
-    data_root='dvdroot_ps4',
-    patches=ROOT / 'patches/Bloodborne.xml',
-    # The 1.09 executable with Lance McDonald's 60 fps patch baked in (crashes in the gestures menu).
-    other_images={'bbc91f4dff6bc3118b039464289e39878a8fdfc802a07fab9d5fe84d935a676f': 'patched_eboot'},
-)
-
 # The target of this fork first: a folder without a readable param.sfo is taken for it.
-GAMES = (WIPEOUT, BLOODBORNE)
+GAMES = (WIPEOUT,)
 DEFAULT = WIPEOUT
 
 
@@ -80,6 +64,4 @@ def data_files(game_dir, game=None):
     """The game's data files (for statistics and the damage check)."""
     game = game or game_for(game_dir)
     root = Path(game_dir) / game.data_root
-    if game.data == 'psarc':
-        return sorted(p for p in root.glob('*.psarc') if p.is_file())
-    return sorted(p for p in root.rglob('*') if p.is_file())
+    return sorted(p for p in root.glob('*.psarc') if p.is_file())
