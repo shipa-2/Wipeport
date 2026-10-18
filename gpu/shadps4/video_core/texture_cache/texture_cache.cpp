@@ -886,7 +886,9 @@ void TextureCache::RefreshImage(Image& image) {
     const s64 now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                            std::chrono::steady_clock::now().time_since_epoch())
                            .count();
-    if (throttle_ns > 0 && image.info.guest_size >= 16_MB && image.last_refresh_ns != 0 &&
+    // Only textures with mips (streamed art): images the GPU fills every frame have one level.
+    if (throttle_ns > 0 && image.info.guest_size >= 16_MB && image.info.resources.levels > 1 &&
+        image.last_refresh_ns != 0 &&
         False(image.flags & ImageFlagBits::GpuModified) && now_ns - image.last_refresh_ns < throttle_ns) {
         return;
     }

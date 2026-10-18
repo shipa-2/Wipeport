@@ -27,6 +27,7 @@ namespace {
 // upload ring keeps WOC_STAGING_KEEP_MB (512) and is populated at startup.
 constexpr u64 RING_IDLE_FRAMES = 3000;
 constexpr u64 LARGE_IDLE_FRAMES = 3000;
+constexpr u64 LARGE_FREE_MARGIN = 64; // wocport: submissions before an idle buffer over the cap goes
 constexpr u64 PREWARM_BLOCKS = 8;
 constexpr u64 LARGE_MIN_GRANULARITY = 64_KB;
 constexpr u64 BLOCK_SIZE = 16_MB;
@@ -265,7 +266,10 @@ void StagingBufferPool::TrimLarge(std::vector<LargeBuffer>& cache, u64 incoming)
             break;
         }
         const LargeBuffer& entry = cache[i];
-        if (entry.held || !scheduler.IsFree(entry.tick)) {
+        // Recording threads write the copies from it after the request: some submissions of
+        // margin before a buffer goes.
+        if (entry.held || !scheduler.IsFree(entry.tick) ||
+            frame - entry.last_used_frame < LARGE_FREE_MARGIN) {
             continue;
         }
         idle -= entry.buffer->SizeBytes();
