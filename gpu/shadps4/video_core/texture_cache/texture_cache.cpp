@@ -874,6 +874,23 @@ void TextureCache::RefreshImage(Image& image) {
     if (False(image.flags & ImageFlagBits::Dirty) || image.info.num_samples > 1) {
         return;
     }
+    // wocport: a large texture its memory keeps being written to (WipEout streams its tracks'
+    // 8192x8192 ones in after the race has started, piece by piece, by the CPU and by GPU
+    // copies: every piece dirtied the whole image), not a render target,
+    // is refreshed at most every WOC_REFRESH_THROTTLE_MS (250); meanwhile it keeps its last
+    // contents. 12 GiB of uploads in 5 s otherwise, frames of 40-660 ms.
+    static const s64 throttle_ns = [] {
+        const char* env = std::getenv("WOC_REFRESH_THROTTLE_MS");
+        return s64(env ? std::strtoll(env, nullptr, 10) : 250) * 1'000'000;
+    }();
+    const s64 now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                           std::chrono::steady_clock::now().time_since_epoch())
+                           .count();
+    if (throttle_ns > 0 && image.info.guest_size >= 16_MB && image.last_refresh_ns != 0 &&
+        False(image.flags & ImageFlagBits::GpuModified) && now_ns - image.last_refresh_ns < throttle_ns) {
+        return;
+    }
+    image.last_refresh_ns = now_ns;
     WocStats::Timer timer{WocStats::t_refresh};
 
     RENDERER_TRACE;
@@ -1185,8 +1202,24 @@ void TextureCache::GarbageCollectImages() {
             const char* env = std::getenv("WOC_GC_BUDGET_MB");
             return env ? std::strtoull(env, nullptr, 10) << 20 : 0;
         }();
-        if (instance.IsIntegrated() || forced_budget) {
-            const u64 budget = forced_budget ? forced_budget : instance.GetDeviceMemoryBudgetNow();
+        // wocport: discrete GPUs too. Their marks came from the budget at startup, already cut by
+        // other programs then (SteamVR: a 3.5 GiB pressure mark on 16 GiB in WipEout's VR mode).
+        // The race needs ~5 GiB: textures were evicted and uploaded again all the time, 0.2-5 GiB
+        // a frame, frames of 40-660 ms. WOC_GC_LIVE_BUDGET=0: the startup marks on discrete GPUs.
+        static const bool live_budget = [] {
+            const char* env = std::getenv("WOC_GC_LIVE_BUDGET");
+            return !env || env[0] != '0';
+        }();
+        if (instance.IsIntegrated() || forced_budget || live_budget) {
+            // The driver's budget is an ioctl: once a second (the collector runs per submission).
+            static u64 live = 0;
+            static std::chrono::steady_clock::time_point asked{};
+            const auto now = std::chrono::steady_clock::now();
+            if (!forced_budget && (live == 0 || now - asked >= std::chrono::seconds{1})) {
+                live = instance.GetDeviceMemoryBudgetNow();
+                asked = now;
+            }
+            const u64 budget = forced_budget ? forced_budget : live;
             if (budget != 0) {
                 trigger_gc_memory = budget / 10 * 7;
                 pressure_gc_memory = budget / 100 * 85;

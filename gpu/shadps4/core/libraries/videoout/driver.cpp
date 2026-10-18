@@ -369,16 +369,12 @@ static void PrintMemory() {
                 (unsigned long long)WocStats::gc_kept_images.exchange(0));
 }
 
-void VideoOutDriver::Flip(const Request& req) {
-    // Update HDR status before presenting, then present the frame (wocport: on the swap thread).
-    RunPresenter([this, frame = req.frame, hdr = req.port->is_hdr] {
-        presenter->SetHDR(hdr);
-        presenter->Present(frame);
-    });
-    Vulkan::FrameCapture::OnFlip(req.index >= 0 ? req.port->buffer_slots[req.index].address_left
-                                                : 0);
+namespace {
 
-    // wocport: WOC_FRAME_STATS=1 prints flip rate and frame time spread every 5 seconds.
+/// wocport: WOC_FRAME_STATS=1: the frame rate and frame time spread every 5 seconds, and what
+/// happened during long frames. Once a frame: a display flip, or a headset frame in VR (the
+/// title flips no display buffer of its own there).
+void FrameStats() {
     static const bool frame_stats = EmulatorSettingsImpl::Flag("WOC_FRAME_STATS", false);
     if (frame_stats) {
         using Clock = std::chrono::steady_clock;
@@ -716,6 +712,21 @@ void VideoOutDriver::Flip(const Request& req) {
             worst_ms = 0;
         }
     }
+}
+
+} // namespace
+
+void VideoOutDriver::Flip(const Request& req) {
+    // Update HDR status before presenting, then present the frame (wocport: on the swap thread).
+    RunPresenter([this, frame = req.frame, hdr = req.port->is_hdr] {
+        presenter->SetHDR(hdr);
+        presenter->Present(frame);
+    });
+    Vulkan::FrameCapture::OnFlip(req.index >= 0 ? req.port->buffer_slots[req.index].address_left
+                                                : 0);
+
+    // wocport: WOC_FRAME_STATS=1 prints flip rate and frame time spread every 5 seconds.
+    FrameStats();
 
     // wocport WOC_HONEST_FLIPS=1 (experiment): the flip completes once the GPU has finished the
     // frame, as on the PS4, where the display flips at a vblank after the end of the frame's
@@ -816,6 +827,7 @@ void VideoOutDriver::SubmitHmdFrame(const HmdFrame& hmd_frame) {
     const u32 frame_id = Core::Vr::Runtime::Instance().NextFrameId();
     hmd_submitted.fetch_add(1, std::memory_order_release);
     liverpool->SendCommand([=, this]() {
+        FrameStats();
         presenter->PresentHmdFrame(frame, frame_id);
         hmd_taken.fetch_add(1, std::memory_order_release);
         // The window shows the left eye (the title flips no display buffer of its own in VR).
