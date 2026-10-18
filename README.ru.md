@@ -59,7 +59,7 @@ Mesa/RADV, SteamVR с Meta Quest 2.
 ## Сборка и запуск
 
 ```bash
-git clone --recursive https://github.com/shipa-2/wocport.git && cd wocport
+git clone --recursive https://github.com/shipa-2/Wipeport.git wocport && cd wocport
 bash build.sh                              # out/woc-probe и out/gpu/libwocgpu.so
 WOC_GAME_DIR=/путь/к/CUSA05670 bash run.sh
 ```

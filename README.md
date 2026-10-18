@@ -60,7 +60,7 @@ RX 6800 XT, Mesa/RADV, SteamVR with a Meta Quest 2.
 ## Build and run
 
 ```bash
-git clone --recursive https://github.com/shipa-2/wocport.git && cd wocport
+git clone --recursive https://github.com/shipa-2/Wipeport.git wocport && cd wocport
 bash build.sh                              # out/woc-probe and out/gpu/libwocgpu.so
 WOC_GAME_DIR=/path/to/CUSA05670 bash run.sh
 ```
