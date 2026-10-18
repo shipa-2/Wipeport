@@ -160,7 +160,7 @@ target_compile_definitions(wocgpu PRIVATE IMGUI_IMPL_VULKAN_NO_PROTOTYPES
     WOC_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/DejaVuSans.ttf")
 set_source_files_properties(shim/wocport_overlay.cpp PROPERTIES
     OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/DejaVuSans.ttf")
-target_include_directories(wocgpu PRIVATE shim layer games cp shadps4 ${SHADER_INCLUDE} third_party/gcn/include third_party/half/include)
+target_include_directories(wocgpu PRIVATE shim layer games cp shadps4 ${SHADER_INCLUDE} third_party/gcn/include third_party/half/include third_party/renderdoc)
 target_compile_definitions(wocgpu PRIVATE BOOST_ASIO_STANDALONE NDEBUG)
 target_compile_options(wocgpu PRIVATE -Wno-deprecated-declarations -Wno-missing-field-initializers)
 # Loaded with woc-probe at startup (DT_NEEDED, never dlopen): thread_local access without a
