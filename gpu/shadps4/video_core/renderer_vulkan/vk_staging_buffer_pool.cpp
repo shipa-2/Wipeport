@@ -42,6 +42,14 @@ StagingBufferPool::StagingBufferPool(const Instance& instance_, Scheduler& sched
     : instance{instance_}, scheduler{scheduler_} {
     const char* env = std::getenv("WOC_STAGING_KEEP_MB");
     keep_blocks = (env ? std::strtoull(env, nullptr, 10) : 512) * 1_MB / BLOCK_SIZE;
+    // wocport: idle large buffers are kept up to WOC_STAGING_LARGE_MB (512) per memory type. A
+    // buffer is reused only for a request of about its size, so loading a track's textures of
+    // many sizes left hundreds of them (3 GiB of VRAM in WipEout's VR mode) for 3000 frames.
+    const char* large = std::getenv("WOC_STAGING_LARGE_MB");
+    large_keep_bytes = (large ? std::strtoull(large, nullptr, 10) : 512) * 1_MB;
+    const char* large_max = std::getenv("WOC_STAGING_LARGE_MAX_MB");
+    large_max_bytes = std::max<u64>((large_max ? std::strtoull(large_max, nullptr, 10) : 1536) * 1_MB,
+                                    large_keep_bytes);
     Ring& ring = rings[u32(MemoryType::HostUncached)];
     for (u64 i = 0; i < PREWARM_BLOCKS; ++i) {
         auto& block = ring.blocks.emplace_back(Block{
@@ -110,15 +118,54 @@ StagingBufferRef StagingBufferPool::RequestLarge(u64 size, MemoryType type, bool
     auto& cache = large_caches[u32(type)];
     const u64 max_size = std::max(size + size / 4, RoundAllocationSize(size));
 
-    LargeBuffer* best{};
-    for (LargeBuffer& entry : cache) {
-        const u64 entry_size = entry.buffer->SizeBytes();
-        if (entry.held || entry_size < size || entry_size > max_size ||
-            !scheduler.IsFree(entry.tick)) {
-            continue;
+    const auto find = [&]() -> LargeBuffer* {
+        LargeBuffer* found{};
+        for (LargeBuffer& entry : cache) {
+            const u64 entry_size = entry.buffer->SizeBytes();
+            if (entry.held || entry_size < size || entry_size > max_size ||
+                !scheduler.IsFree(entry.tick)) {
+                continue;
+            }
+            if (!found || entry_size < found->buffer->SizeBytes()) {
+                found = &entry;
+            }
         }
-        if (!best || entry_size < best->buffer->SizeBytes()) {
-            best = &entry;
+        return found;
+    };
+    LargeBuffer* best = find();
+
+    if (!best) {
+        const u64 new_size = RoundAllocationSize(size);
+        // wocport: make room among the idle ones before adding another.
+        TrimLarge(cache, new_size);
+        // wocport: and bound the ones the GPU still reads. Loading a track sent textures to be
+        // detiled faster than the GPU took them, each through a buffer of its own: 5 GiB of
+        // VRAM in flight in WipEout. Past WOC_STAGING_LARGE_MAX_MB (1536) the oldest submitted
+        // one is waited for, then reused or freed.
+        const auto total = [&] {
+            u64 bytes = 0;
+            for (const LargeBuffer& entry : cache) {
+                bytes += entry.buffer->SizeBytes();
+            }
+            return bytes;
+        };
+        while (total() + new_size > large_max_bytes) {
+            LargeBuffer* oldest{};
+            for (LargeBuffer& entry : cache) {
+                if (!entry.held && entry.tick < scheduler.CurrentTick() &&
+                    !scheduler.IsFree(entry.tick) && (!oldest || entry.tick < oldest->tick)) {
+                    oldest = &entry;
+                }
+            }
+            if (!oldest) {
+                break;
+            }
+            scheduler.WaitSubmitted(oldest->tick);
+            scheduler.Wait(oldest->tick);
+            if ((best = find())) {
+                break;
+            }
+            TrimLarge(cache, new_size);
         }
     }
 
@@ -165,7 +212,7 @@ void StagingBufferPool::TickFrame() {
         TrimRing(ring);
     }
     for (auto& cache : large_caches) {
-        TrimLarge(cache);
+        TrimLarge(cache, 0);
     }
     PublishStats();
 }
@@ -190,11 +237,42 @@ void StagingBufferPool::TrimRing(Ring& ring) {
     }
 }
 
-void StagingBufferPool::TrimLarge(std::vector<LargeBuffer>& cache) {
+void StagingBufferPool::TrimLarge(std::vector<LargeBuffer>& cache, u64 incoming) {
     std::erase_if(cache, [this](const LargeBuffer& entry) {
         return !entry.held && frame - entry.last_used_frame >= LARGE_IDLE_FRAMES &&
                scheduler.IsFree(entry.tick);
     });
+    // wocport: the idle ones beyond large_keep_bytes go, least recently used first.
+    u64 idle = incoming;
+    for (const LargeBuffer& entry : cache) {
+        if (!entry.held) {
+            idle += entry.buffer->SizeBytes();
+        }
+    }
+    if (idle <= large_keep_bytes) {
+        return;
+    }
+    std::vector<size_t> order(cache.size());
+    for (size_t i = 0; i < order.size(); ++i) {
+        order[i] = i;
+    }
+    std::ranges::sort(order, [&](size_t a, size_t b) {
+        return cache[a].last_used_frame < cache[b].last_used_frame;
+    });
+    std::vector<bool> drop(cache.size());
+    for (const size_t i : order) {
+        if (idle <= large_keep_bytes) {
+            break;
+        }
+        const LargeBuffer& entry = cache[i];
+        if (entry.held || !scheduler.IsFree(entry.tick)) {
+            continue;
+        }
+        idle -= entry.buffer->SizeBytes();
+        drop[i] = true;
+    }
+    size_t index = 0;
+    std::erase_if(cache, [&](const LargeBuffer&) { return drop[index++]; });
 }
 
 void StagingBufferPool::PublishStats() const {

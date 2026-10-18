@@ -74,7 +74,7 @@ private:
     StagingBufferRef RequestLarge(u64 size, VideoCore::MemoryType type, bool deferred);
 
     void TrimRing(Ring& ring);
-    void TrimLarge(std::vector<LargeBuffer>& cache);
+    void TrimLarge(std::vector<LargeBuffer>& cache, u64 incoming);
 
     void PublishStats() const;
 
@@ -83,6 +83,8 @@ private:
 
     std::array<Ring, NUM_TYPES> rings;
     u64 keep_blocks = 0; ///< wocport: ring blocks never trimmed
+    u64 large_keep_bytes = 0; ///< wocport: idle large buffers kept per memory type (bytes)
+    u64 large_max_bytes = 0;  ///< wocport: large buffers per memory type before waiting (bytes)
     std::array<std::vector<LargeBuffer>, NUM_TYPES> large_caches;
     u64 frame = 0;
 };
