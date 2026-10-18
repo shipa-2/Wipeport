@@ -63,7 +63,7 @@ class WipeoutPatches(unittest.TestCase):
         self.assertEqual(wp.environment(settings, {}),
                          ['WOC_INTERNAL_WIDTH=2560', 'WOC_INTERNAL_HEIGHT=1440', 'WOC_FPS_LIMIT=144',
                           'WOC_DMEM_MB=6144'])
-        # Explicit environment variables win over wocport.ini.
+        # Explicit environment variables win over wipeport.ini.
         self.assertEqual(wp.environment(settings, {'WOC_INTERNAL_WIDTH': '1920', 'WOC_FPS_LIMIT': '0',
                                                    'WOC_DMEM_MB': '8192'}), [])
         self.assertEqual(wp.environment({'game_pool_mb': '4224'}, {}), [])

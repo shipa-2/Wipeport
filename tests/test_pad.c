@@ -24,7 +24,7 @@ int main(void) {
     assert(fd>=0);
     close(fd);
     setenv("WOC_PAD_FILE",path,1);
-    /* wocport.ini controls: buttons moved, a trigger as a button and a button as a trigger. */
+    /* wipeport.ini controls: buttons moved, a trigger as a button and a button as a trigger. */
     char config[]="/tmp/wocport-pad-config-XXXXXX";
     int config_fd=mkstemp(config);
     assert(config_fd>=0);

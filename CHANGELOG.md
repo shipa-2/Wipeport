@@ -43,7 +43,7 @@ bloodborne_pc's ([docs/bloodborne_pc/](docs/bloodborne_pc/)).
   census), the online module, `dvdroot_ps4` mods, the save sound workaround.
 - Mouse input (camera, buttons, wheel).
 - The port's names: `BB_*` variables become `WOC_*`; bbport/bbgpu/bblayer become
-  wocport/wocgpu/woclayer (`woc-probe`, `libwocgpu.so`, `wocport.ini`).
+  wocport/wocgpu/woclayer (`woc-probe`, `libwocgpu.so`, `wipeport.ini`).
 
 ### Tools
 

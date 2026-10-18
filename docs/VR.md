@@ -24,7 +24,7 @@ SteamVR may crash with it.
 
 ## Settings
 
-| `wocport.ini` | Launcher | Variable | Meaning |
+| `wipeport.ini` | Launcher | Variable | Meaning |
 |---|---|---|---|
 | `vr_scale` | Eye resolution | `WOC_VR_SCALE` | The eye render size: 960×1080 × scale. Empty: the game's own 1.4 (1344×1512) |
 | `vr_fps` | Frame rate | `WOC_VR_FPS` | `60` as on PS VR, or `120` |

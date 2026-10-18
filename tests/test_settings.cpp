@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// wocport_settings.cpp: the menu saves its keys into wocport.ini and keeps the launcher's (controls).
+// wocport_settings.cpp: the menu saves its keys into wipeport.ini and keeps the launcher's (controls).
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>

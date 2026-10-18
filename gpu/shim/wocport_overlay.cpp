@@ -159,11 +159,11 @@ void Hint(const char* text) {
 }
 
 // The settings menu as in 0.3 and 0.4: one window (moved with the mouse, its place kept in
-// wocport.ini), sections one under the other, ImGui's own widgets and keyboard/gamepad navigation.
+// wipeport.ini), sections one under the other, ImGui's own widgets and keyboard/gamepad navigation.
 void Menu() {
     auto& s = WocSettings::Get();
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    // Where it was moved last (wocport.ini menu_pos, a fraction of the screen), kept on screen.
+    // Where it was moved last (wipeport.ini menu_pos, a fraction of the screen), kept on screen.
     ImVec2 pos(viewport->WorkPos.x + 40.0f * base_scale, viewport->WorkPos.y + 40.0f * base_scale);
     if (s.menu_x >= 0.0f && s.menu_y >= 0.0f) {
         const float margin = 80.0f * base_scale;
@@ -563,8 +563,8 @@ void Menu() {
     if (quit_armed && !ImGui::IsItemFocused() && !ImGui::IsItemHovered()) {
         quit_armed = false;
     }
-    ImGui::TextDisabled("%s", WocSettings::MenuText("Settings are saved to wocport.ini",
-                                             "Настройки сохраняются в wocport.ini"));
+    ImGui::TextDisabled("%s", WocSettings::MenuText("Settings are saved to wipeport.ini",
+                                             "Настройки сохраняются в wipeport.ini"));
     ImGui::End();
     if (!keep_open) {
         SetOpen(false);

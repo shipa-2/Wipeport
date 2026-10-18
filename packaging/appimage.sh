@@ -3,7 +3,7 @@
 # its scripts and the launcher, bundled with their Nix closure (nix-appimage: the AppImage mounts
 # its /nix/store with user namespaces, available on SteamOS and most desktops).
 # Running it opens the launcher; `--play` starts the game with the launcher's saved settings.
-# Data (generated files, saves, wocport.ini): ~/.local/share/wocport (WOC_DATA_DIR).
+# Data (generated files, saves, wipeport.ini): ~/.local/share/wocport (WOC_DATA_DIR).
 set -euo pipefail
 cd -- "$(dirname -- "$0")/.."
 [[ -f out/woc-probe && -f out/gpu/libwocgpu.so ]] || { echo 'Build first: bash build.sh' >&2; exit 1; }

@@ -72,9 +72,9 @@ bash launcher/woc-launcher.sh              # launcher/install-desktop.sh adds it
 ```
 
 By default the game folder is expected next to the repository (`../CUSA05670`). Saves and the
-shader cache go to `user/`, settings to `wocport.ini`.
+shader cache go to `user/`, settings to `wipeport.ini`.
 
-### Settings (`wocport.ini`, the launcher, or environment variables)
+### Settings (`wipeport.ini`, the launcher, or environment variables)
 
 | Setting | Variable | Meaning |
 |---|---|---|

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """WipEout Omega Collection launcher for the native port (GTK4 / libadwaita).
 
-Picks the game folder, edits the port's settings (wocport.ini: VR, resolution, upscaler, ...) and the
+Picks the game folder, edits the port's settings (wipeport.ini: VR, resolution, upscaler, ...) and the
 start-up tweaks passed as environment variables to run.sh, starts and stops the game and shows
 its output. Launcher settings live in ~/.config/wocport-launcher/settings.json.
 Russian, English, Brazilian Portuguese and Simplified Chinese (wocport_i18n: the Russian
@@ -34,7 +34,7 @@ from mods import discover as discover_mods  # noqa: E402
 import game_check  # noqa: E402
 import games  # noqa: E402
 from patches import external_patches  # noqa: E402
-# Packaged (AppImage): generated files, saves and wocport.ini live in WOC_DATA_DIR.
+# Packaged (AppImage): generated files, saves and wipeport.ini live in WOC_DATA_DIR.
 PACKAGED = bool(os.environ.get("WOC_PREBUILT"))
 DATA_DIR = Path(os.environ.get("WOC_DATA_DIR", PORT_DIR))
 CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "wocport-launcher"
@@ -86,7 +86,7 @@ UPSCALERS = [("FSR 4", "fsr4"), ("FSR 4.1.1", "fsr411"), ("FSR 3", "fsr3"),
 PRESETS = [("Native AA", 0), ("Quality (x1.5)", 1), ("Balanced (x1.7)", 2),
            ("Performance (x2)", 3), ("Ultra Performance (x3)", 4)]
 OUTPUT_RES = [("1280×720 (Steam Deck)", "1280x720"), ("1920×1080", "1920x1080"), ("2560×1440", "2560x1440"), ("3840×2160", "3840x2160")]
-# Flat render resolution (wocport.ini render_res): the display size the port reports to the game,
+# Flat render resolution (wipeport.ini render_res): the display size the port reports to the game,
 # which renders its scene at that size (scripts/wipeout_patches.py); the window shows it scaled.
 RENDER_RES = [("1920×1080 (как на PS4)", ""), ("2560×1440", "2560x1440"), ("3200×1800", "3200x1800"),
               ("3832×2156 (больше всего без шахматки)", "3832x2156"),
@@ -94,7 +94,7 @@ RENDER_RES = [("1920×1080 (как на PS4)", ""), ("2560×1440", "2560x1440"),
 # PS VR through SteamVR (the VR page): when the game sees a headset (SHADPS4_VR).
 VR_MODES = [("Авто: если SteamVR видит шлем", "auto"), ("Всегда (VR-режим игры)", "on"),
             ("Выключен (обычный экран)", "off")]
-# The eye size (wocport.ini vr_scale = width / 960): the game sizes the eyes from the PS VR panel,
+# The eye size (wipeport.ini vr_scale = width / 960): the game sizes the eyes from the PS VR panel,
 # 960×1080 an eye, times one scale, so they keep its 8:9 shape (scripts/wipeout_patches.py).
 EYE_WIDTHS = [(1344, "как на PS4"), (1440, "как на PS4 Pro"), (1536, ""), (1728, ""), (1920, ""),
               (2112, ""), (2304, ""), (2496, ""), (2688, "")]
@@ -163,7 +163,7 @@ DEFAULTS = {
     "openxr": True,
 }
 
-# wocport.ini keys the launcher edits; the rest of the file is kept.
+# wipeport.ini keys the launcher edits; the rest of the file is kept.
 INI_DEFAULTS = {
     "upscaler": "fsr4",
     "preset": "4",
@@ -197,7 +197,14 @@ def save_settings(settings):
 
 
 def ini_path():
-    return Path(os.environ.get("WOC_CONFIG", DATA_DIR / "wocport.ini"))
+    if "WOC_CONFIG" in os.environ:
+        return Path(os.environ["WOC_CONFIG"])
+    path = DATA_DIR / "wipeport.ini"
+    # Settings kept as wocport.ini before the project was named Wipeport.
+    old = DATA_DIR / "wocport.ini"
+    if not path.exists() and old.exists():
+        old.rename(path)
+    return path
 
 
 def load_ini():
@@ -391,7 +398,7 @@ def combo_value(row):
 
 
 # Controls (runtime_pad.c): input, label, default keyboard keys, default gamepad buttons (SDL names).
-# wocport.ini key.<input>= / pad.<input>= replace a default; no line keeps it.
+# wipeport.ini key.<input>= / pad.<input>= replace a default; no line keeps it.
 CONTROLS = [
     ("cross", "Крест", "Space", "a"),
     ("circle", "Круг", "Left Shift", "b"),
@@ -657,7 +664,7 @@ class LauncherWindow(Adw.ApplicationWindow):
 
         upscaler = Adw.PreferencesGroup(
             title=tr("Апскейлер"),
-            description=tr("Хранится в wocport.ini; в игре меняется через меню (Insert или L3+R3)"))
+            description=tr("Хранится в wipeport.ini; в игре меняется через меню (Insert или L3+R3)"))
         self.upscaler_row = combo_row(tr("Апскейлер"), None, UPSCALERS, self.ini["upscaler"])
         self.upscaler_row.connect("notify::selected", lambda *_: self.update_upscaler_status())
         upscaler.add(self.upscaler_row)
@@ -1184,7 +1191,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         return page
 
     def vr_scale_value(self):
-        """wocport.ini vr_scale for the chosen eye width (the previous one when the entry is bad)."""
+        """wipeport.ini vr_scale for the chosen eye width (the previous one when the entry is bad)."""
         choice = combo_value(self.vr_eye_row)
         width = parse_eye(self.vr_eye_entry.get_text()) if choice == "custom" else int(choice)
         if width is None:

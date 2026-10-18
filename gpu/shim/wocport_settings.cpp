@@ -16,7 +16,7 @@ namespace {
 
 const char* Path() {
     const char* env = std::getenv("WOC_CONFIG");
-    return env && env[0] ? env : "wocport.ini";
+    return env && env[0] ? env : "wipeport.ini";
 }
 
 float Clamp(float v, float lo, float hi) {
@@ -104,7 +104,7 @@ void Load() {
     for (int e = 0; e < EffectCount; ++e) {
         v.effects[e] = Effects[e].default_on;
     }
-    // wocport: the menu's language until one is chosen in it (menu_language in wocport.ini): the
+    // wocport: the menu's language until one is chosen in it (menu_language in wipeport.ini): the
     // launcher's (WOC_MENU_LANGUAGE), else the system's, as the launcher picks its own.
     {
         const char* lang = std::getenv("WOC_MENU_LANGUAGE");

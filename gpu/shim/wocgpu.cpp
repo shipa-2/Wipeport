@@ -287,7 +287,7 @@ extern "C" int wocgpu_init(const WocGpuConfig* config) {
         std::printf("RenderDoc: loaded; touch $WOC_RENDERDOC_TRIGGER to capture a frame\n");
     }
     // A frame the temporal upscaler does not know is left as the game draws it: the setting is
-    // off whatever wocport.ini or the menu says (as WOC_UPSCALER=none), for every part reading it.
+    // off whatever wipeport.ini or the menu says (as WOC_UPSCALER=none), for every part reading it.
     if (!Game::SceneUpscaler()) {
         WocSettings::Get().upscaler = WocSettings::UpscalerOff;
         WocSettings::Get().startup_upscaler = WocSettings::UpscalerOff;

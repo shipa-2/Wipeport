@@ -64,7 +64,7 @@ def _site(eboot, segments, site, data):
 
 
 def settings_from(settings, env):
-    """The VR options: wocport.ini keys, overridden by WOC_VR_SCALE / WOC_VR_DYNRES / WOC_VR_FPS."""
+    """The VR options: wipeport.ini keys, overridden by WOC_VR_SCALE / WOC_VR_DYNRES / WOC_VR_FPS."""
     def get(key, env_key, default):
         value = env.get(env_key)
         if value is None:
@@ -121,7 +121,7 @@ def writes(eboot, segments, options):
 
 
 def environment(settings, env):
-    """Shell assignments for run.sh: the flat render size and frame limit (wocport.ini
+    """Shell assignments for run.sh: the flat render size and frame limit (wipeport.ini
     render_res / fps_limit; the environment variables they set win)."""
     out = []
     res = settings.get('render_res', '').strip()

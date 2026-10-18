@@ -2,7 +2,7 @@ out/
 __pycache__/
 user/
 *.mp4
-wocport.ini
+wipeport.ini
 fsr4_shaders/
 pgo/
 *.png

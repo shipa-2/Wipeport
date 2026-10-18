@@ -13,12 +13,16 @@ if [[ ${1:-} == --software ]]; then
 fi
 # WOC_PREBUILT=1 (packaged builds, the AppImage): out/woc-probe and its GPU library are installed
 # next to this script; nothing is built and no nix-shell is needed.
-# WOC_DATA_DIR: writable directory for the generated files (out/), saves (user/) and wocport.ini;
+# WOC_DATA_DIR: writable directory for the generated files (out/), saves (user/) and wipeport.ini;
 # by default this directory.
 data=${WOC_DATA_DIR:-.}
 out=$data/out
 mkdir -p "$out"
-export WOC_CONFIG=${WOC_CONFIG:-$data/wocport.ini}
+# Settings kept as wocport.ini before the project was named Wipeport move to wipeport.ini.
+if [[ -z ${WOC_CONFIG:-} && ! -e $data/wipeport.ini && -e $data/wocport.ini ]]; then
+    mv "$data/wocport.ini" "$data/wipeport.ini"
+fi
+export WOC_CONFIG=${WOC_CONFIG:-$data/wipeport.ini}
 # GPU paths are initialized when libwocgpu is loaded, before wocgpu_init receives --user.
 # Select the same user directory now, including for an AppImage or a separate save profile.
 export WOC_GPU_USER_DIR=${WOC_GPU_USER_DIR:-${WOC_USER_DIR:-$data/user}}
@@ -77,7 +81,7 @@ fi
 if [[ -n ${WOC_PROBE:-} ]]; then caps=$(dirname -- "$WOC_PROBE")/woc-gpu-capabilities
 elif [[ -n ${WOC_PREBUILT:-} ]]; then caps=bin/woc-gpu-capabilities
 else caps=out/woc-gpu-capabilities; fi
-# Settings that are environment variables (wocport.ini render_res, fps_limit; see
+# Settings that are environment variables (wipeport.ini render_res, fps_limit; see
 # scripts/wipeout_patches.py); the game's patches (VR resolution and frame rate, third-party).
 while IFS= read -r assignment; do
     [[ $assignment == WOC_*=* ]] && export "$assignment"
@@ -162,7 +166,7 @@ export WOC_COPY_GPU_BUFFERS=${WOC_COPY_GPU_BUFFERS:-1}
 # up to WOC_GPU_WRITE_TWINS_MAX bytes per page) does not wait for the GPU (BufferCache twins).
 export WOC_GPU_WRITE_TWINS=${WOC_GPU_WRITE_TWINS:-1} WOC_GPU_WRITE_TWINS_MAX=${WOC_GPU_WRITE_TWINS_MAX:-65536}
 # The game draws a frame per flip it may make: a fast vblank leaves its rate to the frame time
-# (wocport.ini fps_limit caps it).
+# (wipeport.ini fps_limit caps it).
 export WOC_VBLANK_HZ=${WOC_VBLANK_HZ:-480}
 if [[ -n ${WOC_PREBUILT:-} ]]; then
     probe=${WOC_PROBE:-bin/woc-probe}

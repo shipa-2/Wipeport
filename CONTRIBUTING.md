@@ -11,7 +11,7 @@ Say what you did and what happened, and attach:
 - your GPU, driver and distribution (`vulkaninfo --summary`);
 - for VR: the headset, how it is connected (Link, Air Link, Virtual Desktop, …), and the SteamVR
   version;
-- your settings (`wocport.ini`) and any `WOC_*` / `SHADPS4_*` variables you set.
+- your settings (`wipeport.ini`) and any `WOC_*` / `SHADPS4_*` variables you set.
 
 Never attach game files, dumps or saves with the game's data in them.
 

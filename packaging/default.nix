@@ -214,7 +214,7 @@ pkgs.stdenv.mkDerivation {
                                           pkgs.gawk pkgs.gnused pkgs.gnugrep pkgs.spirv-tools
                                           pkgs.systemdMinimal ]} \
       --run 'export WOC_DATA_DIR=''${WOC_DATA_DIR:-''${XDG_DATA_HOME:-$HOME/.local/share}/wocport}; mkdir -p "$WOC_DATA_DIR"'
-    # The game alone, without the launcher (settings from the data directory's wocport.ini).
+    # The game alone, without the launcher (settings from the data directory's wipeport.ini).
     makeShellWrapper ${pkgs.python3}/bin/python3 $out/bin/wocport-game \
       ${common}      --add-flags "$out/share/wocport/launcher/wocport_vulkan.py ${pkgs.bash}/bin/bash $out/share/wocport/run.sh" \
       --set WOC_PREBUILT 1 \

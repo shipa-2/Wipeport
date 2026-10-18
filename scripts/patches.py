@@ -1,6 +1,6 @@
 """Compile the game's patches into out/patches.bin for the loader.
 
-Built-in patches (scripts/wipeout_patches.py) are chosen by wocport.ini / environment settings.
+Built-in patches (scripts/wipeout_patches.py) are chosen by wipeport.ini / environment settings.
 Third-party patches (shadPS4/GoldHEN XML in the data directory's patches/ folder) are taken for
 the game's serials and version, as their isEnabled says or patches.json overrides.
 
@@ -116,7 +116,7 @@ def main():
     p.add_argument('--patches-dir',type=Path,help='third-party patch XML files (shadPS4 format)')
     p.add_argument('--patches-config',type=Path,help='patches.json: enabled/disabled external patches')
     p.add_argument('--out',type=Path,default=Path(__file__).resolve().parent.parent/'out')
-    p.add_argument('--settings',type=Path,default=Path(__file__).resolve().parent.parent/'wocport.ini')
+    p.add_argument('--settings',type=Path,default=Path(__file__).resolve().parent.parent/'wipeport.ini')
     p.add_argument('--game-dir',type=Path,default=Path(os.environ.get('WOC_GAME_DIR','../CUSA05670')))
     p.add_argument('--print-env',action='store_true',
                    help='print the environment run.sh sets from the settings (VAR=value lines)')
