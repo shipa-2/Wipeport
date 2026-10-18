@@ -57,6 +57,20 @@ let
     x86_64-w64-mingw32-gcc -std=c11 -O1 -Wall -I$f/ffx/api/include -I$f/ffx/upscalers/include \
       $f/fsr4cap.c $f/capture.c $f/rootsig.c -o $out -ld3d12 -ldxguid -static
   '';
+  # PkgTool (LibOrbisPkg 0.2.231 by Maxton, LGPL-3.0, unchanged): scripts/pkg_install.py unpacks
+  # the game's packages with it. A self-contained .NET program for the host's loader (a single-file
+  # bundle reads itself through /proc/self/exe: it cannot run through Nix's ld.so or be patched).
+  pkgtool = pkgs.runCommand "pkgtool-0.2.231" {
+    src = pkgs.fetchurl {
+      url = "https://github.com/maxton/LibOrbisPkg/releases/download/v0.2/PkgTool.Core-linux-x64-0.2.231.zip";
+      hash = "sha256-rIl9BqDJAlb0KXcSy1A+spFz+8bX+Kk2/0dsS3Ll824=";
+    };
+    nativeBuildInputs = [ pkgs.unzip ];
+  } ''
+    mkdir -p $out
+    unzip -q $src -d $out
+    chmod +x $out/PkgTool.Core
+  '';
   # Mesa's Vulkan drivers come with the package (RADV and ANV); wocport_vulkan.py adds the host
   # NVIDIA ICD and only its vendor libraries (matching the host's kernel module). Only the two
   # drivers, not the whole Mesa: its OpenGL drivers and LLVM were ~800 MB of the package. RADV
@@ -181,6 +195,11 @@ pkgs.stdenv.mkDerivation {
     PY
       cp -r fsr4_411 $d/
     fi
+    mkdir -p $d/tools/pkgtool
+    install -m755 ${pkgtool}/PkgTool.Core $d/tools/pkgtool/PkgTool.Core
+    install -m644 ${pkgtool}/LICENSE.txt $d/tools/pkgtool/LICENSE.txt
+    printf '%s\n' 'PkgTool and LibOrbisPkg 0.2.231 by Maxton, unchanged (LGPL-3.0, LICENSE.txt).' \
+      'Source: https://github.com/maxton/LibOrbisPkg (release v0.2).' > $d/tools/pkgtool/README.txt
     install -m755 out/woc-probe $d/bin/woc-probe
     install -m755 out/woc-gpu-capabilities $d/bin/woc-gpu-capabilities
     install -Dm755 out/gpu/libwocgpu.so $d/bin/gpu/libwocgpu.so

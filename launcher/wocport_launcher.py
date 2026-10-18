@@ -480,6 +480,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.process = None
         self.stream = None
         self.fsr411_build = None  # tools/fsr4cap/build_assets.sh while it runs
+        self.pkg_install = None  # scripts/pkg_install.py while it runs
         self.build()
         self.connect("close-request", self.on_close)
 
@@ -520,7 +521,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.launch_button.add_css_class("destructive-action" if running else "suggested-action")
         # The game and an FSR 4.1.1 build do not run together (both want the GPU, the build
         # replaces the assets the game reads).
-        self.launch_button.set_sensitive(self.fsr411_build is None)
+        self.launch_button.set_sensitive(self.fsr411_build is None and self.pkg_install is None)
         if hasattr(self, "fsr411_button"):
             self.fsr411_button.set_sensitive(not running)
 
@@ -546,6 +547,13 @@ class LauncherWindow(Adw.ApplicationWindow):
                                              tr("Открыть в файловом менеджере"),
                                              lambda _b: open_folder(self, self.game_dir())))
         game.add(self.game_row)
+        # The game from its PS4 packages (base game and update 1.07), unpacked by PkgTool.
+        self.pkg_row = Adw.ActionRow(title=tr("Установить из .pkg"),
+                                     subtitle=tr("Пакеты игры и обновления 1.07 из дампа: распаковать в папку игры"))
+        self.pkg_button = Gtk.Button(label=tr("Выбрать пакеты…"), valign=Gtk.Align.CENTER)
+        self.pkg_button.connect("clicked", self.on_pkg_install)
+        self.pkg_row.add_suffix(self.pkg_button)
+        game.add(self.pkg_row)
         # Saves and the shader cache: user/ in the data directory unless chosen.
         self.user_row = Adw.ActionRow(title=tr("Папка сохранений"))
         self.user_status = Gtk.Image()
@@ -896,6 +904,95 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.game_status.set_from_icon_name("object-select-symbolic" if ok and not problem else "dialog-warning-symbolic")
         self.game_status.set_tooltip_text(tooltip)
         self.launch_button.set_sensitive(ok or self.process is not None)
+
+    def on_pkg_install(self, _button):
+        if self.pkg_install is not None:
+            self.pkg_cancelled = True
+            try:
+                os.killpg(int(self.pkg_install.get_identifier()), signal.SIGTERM)
+            except OSError:
+                self.pkg_install.force_exit()
+            return
+        dialog = Gtk.FileDialog(title=tr("Пакеты игры (.pkg): игра и обновление 1.07"))
+        pkg_filter = Gtk.FileFilter()
+        pkg_filter.set_name(tr("Пакеты PS4 (.pkg)"))
+        pkg_filter.add_pattern("*.pkg")
+        pkg_filter.add_pattern("*.PKG")
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(pkg_filter)
+        dialog.set_filters(filters)
+
+        def chosen(dialog, result):
+            try:
+                files = dialog.open_multiple_finish(result)
+            except GLib.Error:
+                return
+            packages = [Path(files.get_item(i).get_path()) for i in range(files.get_n_items())]
+            if not packages:
+                return
+
+            def destination(parent):
+                self.start_pkg_install(packages, Path(parent) / "CUSA05670")
+            self.choose_folder(tr("Куда установить игру (будет создана папка CUSA05670)"),
+                               packages[0].parent, destination)
+        dialog.open_multiple(self, None, chosen)
+
+    def start_pkg_install(self, packages, target):
+        launcher = Gio.SubprocessLauncher.new(
+            Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE)
+        launcher.set_cwd(str(PORT_DIR / "scripts"))
+        command = ["setsid", sys.executable, "-u", str(PORT_DIR / "scripts/pkg_install.py"),
+                   "--dest", str(target), *map(str, packages)]
+        try:
+            self.pkg_install = launcher.spawnv(command)
+        except GLib.Error as error:
+            self.toasts.add_toast(Adw.Toast(title=tr("Не удалось запустить: {}").format(error.message)))
+            return
+        self.pkg_target = target
+        self.pkg_cancelled = False
+        self.pkg_last = ""
+        self.append_log(tr("\n— установка игры в {} —\n").format(target))
+        stream = Gio.DataInputStream.new(self.pkg_install.get_stdout_pipe())
+        stream.read_line_async(GLib.PRIORITY_DEFAULT, None, self.on_pkg_line)
+        self.pkg_install.wait_async(None, self.on_pkg_installed)
+        self.pkg_button.set_label(tr("Отменить"))
+        self.pkg_row.set_subtitle(tr("Подготовка…"))
+        self.update_launch_button()
+
+    def on_pkg_line(self, stream, result):
+        try:
+            line, _length = stream.read_line_finish_utf8(result)
+        except GLib.Error:
+            return
+        if line is None:
+            return
+        self.append_log(line + "\n")
+        if line.strip():
+            self.pkg_last = line.strip()
+            if self.pkg_install is not None:
+                self.pkg_row.set_subtitle(self.pkg_last)
+        stream.read_line_async(GLib.PRIORITY_DEFAULT, None, self.on_pkg_line)
+
+    def on_pkg_installed(self, process, result):
+        try:
+            process.wait_finish(result)
+        except GLib.Error:
+            pass
+        status = process.get_exit_status() if process.get_if_exited() else -1
+        self.pkg_install = None
+        self.pkg_button.set_label(tr("Выбрать пакеты…"))
+        self.pkg_row.set_subtitle(tr("Пакеты игры и обновления 1.07 из дампа: распаковать в папку игры"))
+        self.update_launch_button()
+        self.append_log(tr("— установка завершилась (код {}) —\n").format(status))
+        if status == 0:
+            self.settings["game_dir"] = str(self.pkg_target)
+            self.update_game_status()
+            self.store()
+            self.toasts.add_toast(Adw.Toast(title=tr("Игра установлена и выбрана")))
+        elif self.pkg_cancelled:
+            self.toasts.add_toast(Adw.Toast(title=tr("Установка отменена")))
+        else:
+            self.alert(tr("Игра не установлена"), self.pkg_last or tr("Подробности в журнале"))
 
     def on_choose_game(self, _button):
         def chosen(path):
@@ -1339,6 +1436,8 @@ class LauncherWindow(Adw.ApplicationWindow):
             self.stop_game()
         if self.fsr411_build:
             self.stop_fsr411_build()
+        if self.pkg_install:
+            self.on_pkg_install(None)
         return False
 
     # --- FSR 4.1.1 from the user's DLL -----------------------------------------------------

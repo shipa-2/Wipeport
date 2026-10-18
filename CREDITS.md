@@ -67,6 +67,7 @@ GPL-2.0-only, so a build that includes it is distributed under GPL-2.0.
 | [half](https://half.sourceforge.net/) by Christian Rau | `gpu/third_party/half` | MIT |
 | [sirit](https://github.com/shadps4-emu/sirit) by **ReinUsesLisp** and contributors | `gpu/third_party/sirit` | BSD-3-Clause |
 | GCN register headers by AMD (from shadPS4's externals) | `gpu/third_party/gcn` | MIT |
+| [RenderDoc](https://renderdoc.org/)'s in-application API header by Baldur Karlsson | `gpu/third_party/renderdoc` | MIT |
 | [cpp-httplib](https://github.com/yhirose/cpp-httplib) by Yuji Hirose | `gpu/third_party/httplib` | MIT |
 | [DejaVu fonts](https://dejavu-fonts.github.io/) | `gpu/third_party/fonts` | Bitstream Vera / DejaVu license |
 | [dxil-spirv](https://github.com/HansKristian-Work/dxil-spirv) (builds the FSR 4.1.1 assets, not shipped) | `tools/fsr4cap` | MIT |
@@ -78,10 +79,11 @@ libraries are not distributed here.
 
 ### Tools
 
-- [LibOrbisPkg](https://github.com/maxton/LibOrbisPkg) by **maxton**: its PkgTool unpacks the
-  game's `.pkg` files.
 - [RenderDoc](https://renderdoc.org/) by Baldur Karlsson: frame captures (`WOC_RENDERDOC=1`,
   `tools/rdoc_*.py`).
+- [LibOrbisPkg](https://github.com/maxton/LibOrbisPkg) by **maxton**: its PkgTool 0.2.231 (LGPL-3.0, unchanged) is
+  packaged in the AppImage: the launcher's *Install from .pkg* unpacks the game with it
+  (`scripts/pkg_install.py`; from source: `tools/fetch_pkgtool.sh`).
 
 ## License
 

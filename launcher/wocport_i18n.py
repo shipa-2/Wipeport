@@ -8,6 +8,19 @@ otherwise).
 import os
 
 EN = {
+    "Установить из .pkg": "Install from .pkg",
+    "Пакеты игры и обновления 1.07 из дампа: распаковать в папку игры":
+        "The game's and update 1.07's packages from a dump: unpack into a game folder",
+    "Выбрать пакеты…": "Choose packages…",
+    "Пакеты игры (.pkg): игра и обновление 1.07": "Game packages (.pkg): the game and update 1.07",
+    "Пакеты PS4 (.pkg)": "PS4 packages (.pkg)",
+    "Куда установить игру (будет создана папка CUSA05670)": "Where to install the game (a CUSA05670 folder is made there)",
+    "\n— установка игры в {} —\n": "\n— installing the game into {} —\n",
+    "— установка завершилась (код {}) —\n": "— installation finished (code {}) —\n",
+    "Игра установлена и выбрана": "The game is installed and chosen",
+    "Установка отменена": "Installation cancelled",
+    "Игра не установлена": "The game was not installed",
+    "Подробности в журнале": "Details in the log",
     '{}×{} на глаз': '{}×{} per eye',
     'как на PS4': 'as on PS4',
     'как на PS4 Pro': 'as on PS4 Pro',

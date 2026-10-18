@@ -50,8 +50,10 @@ Mesa/RADV, SteamVR с Meta Quest 2.
   с обновлением 1.07, скопированным поверх базовой игры. Лаунчер и `run.sh` проверяют
   исполняемый файл и сообщают, если обновления нет (`WOC_SKIP_GAME_CHECK=1` отключает проверку).
   Другие регионы пока не проверены: их исполняемый файл 1.07 должен совпадать.
-  Файлы `.pkg` распаковывает PkgTool из [LibOrbisPkg](https://github.com/maxton/LibOrbisPkg)
-  (в Linux может понадобиться `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`).
+  Или пакеты дампа: «Установить из .pkg» в лаунчере берёт файлы `.pkg` базовой игры и обновления
+  1.07 и делает эту папку (около 47 ГБ; распаковывает PkgTool из
+  [LibOrbisPkg](https://github.com/maxton/LibOrbisPkg): в AppImage он есть, из исходников —
+  `bash tools/fetch_pkgtool.sh`). Пакеты из PlayStation Store зашифрованы и не подходят.
 - Для VR: SteamVR (или другой OpenXR runtime) и шлем.
 - Для сборки: GCC, CMake, Ninja, Python 3, glslang, SDL3, заголовки Vulkan, загрузчик OpenXR и
   библиотеки из `shell.nix`. С [Nix](https://nixos.org) всё берётся из `shell.nix`.

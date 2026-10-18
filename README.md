@@ -50,9 +50,11 @@ RX 6800 XT, Mesa/RADV, SteamVR with a Meta Quest 2.
   archives) with update 1.07 copied over the base game. The launcher and `run.sh` check the
   executable and say when the update is missing (`WOC_SKIP_GAME_CHECK=1` skips the check).
   Other regions are not known to work yet: their 1.07 executable has to match.
-  The `.pkg` files can be unpacked with PkgTool from
-  [LibOrbisPkg](https://github.com/maxton/LibOrbisPkg) (on Linux it may need
-  `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`).
+  Or the dump's packages: the launcher's *Install from .pkg* takes the base game's and update
+  1.07's `.pkg` files and makes that folder (about 47 GB; PkgTool of
+  [LibOrbisPkg](https://github.com/maxton/LibOrbisPkg) does the unpacking: in the AppImage, or
+  `bash tools/fetch_pkgtool.sh` from source). Packages from the PlayStation Store are encrypted
+  and cannot be used.
 - For VR: SteamVR (or another OpenXR runtime) with a headset.
 - To build: GCC, CMake, Ninja, Python 3, glslang, SDL3, Vulkan headers, OpenXR loader and the
   libraries in `shell.nix`. With [Nix](https://nixos.org) everything comes from `shell.nix`.
