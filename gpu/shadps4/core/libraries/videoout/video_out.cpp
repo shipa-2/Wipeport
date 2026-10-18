@@ -485,12 +485,12 @@ s32 SubmitHmdFlip(s32 handle, s32 index, s64 flip_arg) {
     }
     // As the PS4's reprojection: flip status, flip events and the buffers' labels go on, at
     // the refresh itself (the headset's picture goes through PresentHmdFrame, not this flip).
-    // Not before the GPU thread has read the title's command buffers for the last frame: the
-    // flip releases its buffers (labels), and the title would rewrite commands not read yet.
-    if (driver->HmdFramePending()) {
-        return ORBIS_OK; // this refresh shows the previous frame again
-    }
-    driver->HmdFlip(port, index, flip_arg);
+    // wocport: while the GPU thread has yet to read the title's command buffers for the last
+    // frame, the flip still happens (the title's frame pacing counts these flips), but the labels
+    // that release its buffers wait for the GPU thread: the title would otherwise rewrite commands
+    // not read yet. Skipping the whole flip instead held the title a full refresh whenever the
+    // GPU thread was a little late: frames of 16.7 ms, 83-99 FPS with the GPU half idle.
+    driver->HmdFlip(port, index, flip_arg, driver->HmdFramePending());
     return ORBIS_OK;
 }
 

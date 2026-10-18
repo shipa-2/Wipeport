@@ -382,23 +382,25 @@ void Rasterizer::SubmitForSignalsNow() {
     PublishSignals(); // the end of a guest submission
     static const auto interval = std::chrono::microseconds([] {
         const char* env = std::getenv("WOC_HONEST_FLUSH_US");
-        return env ? std::strtoll(env, nullptr, 10) : 2000ll;
+        return env ? std::strtoll(env, nullptr, 10) : 250ll;
     }());
     if (!HasUnsubmittedSignals()) {
         return;
     }
     // Batched (one submission per WOC_HONEST_FLUSH_US) while the GPU still has work; at once when it
-    // has finished everything submitted: holding the work back then only leaves it idle. Not at
-    // once while draws are queued for this thread (WOC_HONEST_IDLE_BACKLOG bytes, default 64 KiB):
-    // it is then what the GPU waits for, and a submission costs it ~65 us (heavy scenes: 13 a
-    // frame; 95 -> 100 FPS with half as many).
+    // has finished everything submitted: holding the work back then only leaves it idle. With
+    // WOC_HONEST_IDLE_BACKLOG (bytes) not at once while that many are queued for this thread.
+    // wocport: 250 us and no backlog limit by default (they were 2 ms and 64 KiB for Bloodborne at
+    // 60 FPS). WipEout waits for the GPU at the end of each frame; in VR at 120 FPS the eyes'
+    // passes reached the GPU 2-5 ms after the game had sent them, with the GPU idle meanwhile:
+    // half the frames of a heavy section took 10-16 ms. Now 0.2% (~18 submissions a frame).
     static const bool idle_flush = [] {
         const char* env = std::getenv("WOC_HONEST_IDLE_FLUSH");
         return !env || env[0] != '0';
     }();
     static const u64 idle_backlog = [] {
         const char* env = std::getenv("WOC_HONEST_IDLE_BACKLOG");
-        return env ? std::strtoull(env, nullptr, 10) : u64(64 * 1024);
+        return env ? std::strtoull(env, nullptr, 10) : ~u64{0};
     }();
     const bool gpu_idle =
         idle_flush &&

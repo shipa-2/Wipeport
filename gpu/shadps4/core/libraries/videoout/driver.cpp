@@ -4,6 +4,7 @@
 #include <atomic>
 #include <algorithm>
 #include <cmath>
+#include <thread>
 #include <vector>
 #include <chrono>
 #include <cstdio>
@@ -22,6 +23,7 @@
 #include "core/emulator_settings.h"
 #include "core/libraries/kernel/time.h"
 #include "core/libraries/videoout/driver.h"
+#include "core/vr/vr_runtime.h"
 #include "core/libraries/kernel/equeue.h"
 
 extern "C" void runtime_sleep_stats(uint64_t* calls, uint64_t* ns);
@@ -830,13 +832,17 @@ void VideoOutDriver::SubmitHmdFrame(const HmdFrame& hmd_frame) {
         FrameStats();
         presenter->PresentHmdFrame(frame, frame_id);
         hmd_taken.fetch_add(1, std::memory_order_release);
+        if (VideoOutPort* const port = hmd_port.load(std::memory_order_acquire)) {
+            ReleaseHeldLabels(port);
+        }
         // The window shows the left eye (the title flips no display buffer of its own in VR).
         Vulkan::Frame* const mirror = presenter->PrepareHmdMirrorFrame(frame);
         RunPresenter([this, mirror] { presenter->Present(mirror); });
     });
 }
 
-void VideoOutDriver::HmdFlip(VideoOutPort* port, s32 index, s64 flip_arg) {
+void VideoOutDriver::HmdFlip(VideoOutPort* port, s32 index, s64 flip_arg, bool hold_labels) {
+    hmd_port.store(port, std::memory_order_release);
     {
         std::unique_lock lock{port->port_mutex};
         auto& flip_status = port->flip_status;
@@ -858,10 +864,37 @@ void VideoOutDriver::HmdFlip(VideoOutPort* port, s32 index, s64 flip_arg) {
         }
     }
     if (port->prev_index != -1) {
-        port->buffer_labels[port->prev_index] = 0;
-        port->SignalVoLabel();
+        if (hold_labels) {
+            std::scoped_lock lock{port->port_mutex};
+            port->held_labels |= 1u << port->prev_index;
+        } else {
+            port->buffer_labels[port->prev_index] = 0;
+            port->SignalVoLabel();
+        }
     }
     port->prev_index = index;
+    if (!hold_labels) {
+        ReleaseHeldLabels(port); // held by an earlier refresh, the GPU thread took the frame since
+    }
+}
+
+void VideoOutDriver::ReleaseHeldLabels(VideoOutPort* port) {
+    u32 held;
+    {
+        std::scoped_lock lock{port->port_mutex};
+        if (port->held_labels == 0 || HmdFramePending()) {
+            return;
+        }
+        // Not the buffer on screen now: its label goes at the next flip.
+        held = port->held_labels & ~(port->prev_index >= 0 ? 1u << port->prev_index : 0u);
+        port->held_labels = 0;
+    }
+    for (u32 i = 0; held != 0; ++i, held >>= 1) {
+        if (held & 1) {
+            port->buffer_labels[i] = 0;
+        }
+    }
+    port->SignalVoLabel();
 }
 
 void VideoOutDriver::SubmitFlipInternal(VideoOutPort* port, s32 index, s64 flip_arg, bool is_eop) {
@@ -979,12 +1012,25 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
         }
 
         // wocport (AstroQuest): the headset reprojects once per refresh of its panel (PS VR:
-        // 120 Hz), whatever rate the port's vblank runs at (WOC_VBLANK_HZ, up to 480).
+        // 120 Hz; the host headset's rate when OpenXR reports one), whatever rate the port's
+        // vblank runs at (WOC_VBLANK_HZ, up to 480). On deadlines of their own, each the previous
+        // one plus a period, taken at the vblank that reaches them: counting every fourth vblank
+        // of a timer that wakes a little late each time gave 116.7 refreshes a second instead of
+        // 120 (and the game 116.7 FPS). A thread of their own, exactly on time but off the
+        // vblanks, made it worse (87-116 FPS): the title paces on the vblank events too.
         {
-            static const u32 hmd_every = std::max(1u, (EmulatorSettings.GetVblankFrequency() + 60) / 120);
-            static u32 hmd_vblanks = 0;
-            if (++hmd_vblanks >= hmd_every) {
-                hmd_vblanks = 0;
+            using Clock = std::chrono::steady_clock;
+            static Clock::time_point hmd_deadline{};
+            const auto now = Clock::now();
+            const float rate = std::clamp(Core::Vr::Runtime::Instance().HeadsetRefreshRate(), 60.0f,
+                                          144.0f);
+            const auto period = std::chrono::duration_cast<Clock::duration>(
+                std::chrono::duration<double>(1.0 / rate));
+            if (hmd_deadline == Clock::time_point{} || now - hmd_deadline > period * 4) {
+                hmd_deadline = now; // the first refresh, or far behind (a stall): start again
+            }
+            if (now >= hmd_deadline) {
+                hmd_deadline += period;
                 Libraries::Hmd::OnVblank();
             }
         }
