@@ -43,9 +43,9 @@ inline bool GuestInPlace() {
 }
 /// The driver cannot bind guest memory to the arena: WOC_GUEST_IN_PLACE stays off from now on.
 void DisableGuestInPlace();
-/// Whether CPU writes to GPU memory are caught by page protection. Off with WOC_GUEST_IN_PLACE: the
-/// GPU side learns of writes from the writers (file reads, the game's resource loaders, its own
-/// DMA and command writes); WOC_WRITE_TRACKING=1 brings the protection back.
+/// Whether CPU writes to GPU memory are caught by page protection. wocport: on by default; with
+/// WOC_GUEST_IN_PLACE and WOC_WRITE_TRACKING=0 the GPU side learns of writes from the writers only
+/// (file reads, DMA and command writes).
 inline bool WriteTracking() {
     const u8 state = Detail::write_tracking.load(std::memory_order_relaxed);
     return state != 0 ? state == 1 : Detail::ComputeWriteTracking();

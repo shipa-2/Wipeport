@@ -485,11 +485,16 @@ void DisableGuestInPlace() {
 }
 
 bool Detail::ComputeWriteTracking() {
-    static const bool forced = [] {
+    // wocport: on by default. With the memory used in place, the GPU side otherwise hears of CPU
+    // writes from the writers only: file reads, and the resource loaders of the game the hooks
+    // were written for (Bloodborne's, gone with it). WipEout's own code (FIOS, linked into it)
+    // writes the ship models it loads into memory with VRAM copies: the GPU drew the old ship, or
+    // a mix of old and new vertices (models torn into long spikes). WOC_WRITE_TRACKING=0: off.
+    static const bool on_env = [] {
         const char* env = std::getenv("WOC_WRITE_TRACKING");
-        return env && env[0] == '1';
+        return !env || env[0] != '0';
     }();
-    const bool on = forced || !GuestInPlace();
+    const bool on = on_env || !GuestInPlace();
     write_tracking.store(on ? 1 : 2, std::memory_order_relaxed);
     return on;
 }
