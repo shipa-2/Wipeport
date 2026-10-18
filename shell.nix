@@ -1,4 +1,4 @@
-# Build environment: `nix-shell native_probe/shell.nix --run 'bash native_probe/run.sh'`
+# Build environment: `nix-shell --run 'bash build.sh'` (CI: .github/workflows/appimage.yml)
 { pkgs ? import <nixpkgs> {} }:
 let
   # libdecor (window frames on GNOME's Wayland) without its GTK 3 plugin (GTK 3, tinysparql, ICU:
@@ -23,7 +23,7 @@ pkgs.mkShell {
     vulkan-headers vulkan-loader sdl3
     # GPU library (gpu/): shadPS4 video core dependencies
     ffmpeg-headless boost fmt magic-enum robin-map xxhash vulkan-memory-allocator glslang spirv-cross xbyak zydis spirv-headers miniz libx11 libxcb xorgproto wayland
-    # Online module (gpu/wocnet): shadNet client, HTTPS, UPnP
-    protobuf nlohmann_json openssl zlib miniupnpc
+    # PS VR in a PC headset (gpu/shadps4/core/vr): the OpenXR loader (SteamVR or another runtime)
+    openxr-loader
   ];
 }

@@ -1,0 +1,63 @@
+# Builds the AppImage (the launcher, the port and their whole Nix closure: one file a player
+# downloads, runs, and points at their own game folder). A tag v* publishes it as a release with
+# SHA256SUMS; a manual run (Actions -> AppImage -> Run workflow) leaves it as an artifact.
+name: AppImage
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  appimage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      # Mesa's Vulkan drivers and GTK 4 are built from source (packaging/default.nix): the runner's
+      # 14 GB of free disk are not enough for them and the Nix store.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      # The store between runs: Mesa, GTK and the rest are built once.
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Build
+        run: nix-shell --run 'bash build.sh'
+
+      - name: Package
+        run: nix-shell -p binutils --run 'bash packaging/appimage.sh'
+
+      - name: Checksums
+        run: cd dist && sha256sum Wipeport-x86_64.AppImage > SHA256SUMS && cat SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Wipeport-x86_64.AppImage
+          path: |
+            dist/Wipeport-x86_64.AppImage
+            dist/SHA256SUMS
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/Wipeport-x86_64.AppImage dist/SHA256SUMS \
+            --title "Wipeport $GITHUB_REF_NAME" --notes-file packaging/release-notes.md
