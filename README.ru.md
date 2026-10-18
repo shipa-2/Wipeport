@@ -1,8 +1,8 @@
-# wocport — нативный порт WipEout Omega Collection для Linux
+# Wipeport — нативный порт WipEout Omega Collection для Linux
 
 [English](README.md) · **Русский**
 
-wocport запускает *WipEout Omega Collection* для PlayStation 4 (CUSA05670, обновление 1.07) на
+Wipeport запускает *WipEout Omega Collection* для PlayStation 4 (CUSA05670, обновление 1.07) на
 ПК с Linux x86-64 как нативную программу — на мониторе или в VR-шлеме для ПК:
 
 - оригинальный исполняемый файл игры (x86-64) выполняется прямо на процессоре, без эмуляции и
@@ -13,7 +13,7 @@ wocport запускает *WipEout Omega Collection* для PlayStation 4 (CUSA
 - вместо PlayStation VR работает любой шлем через OpenXR (SteamVR), библиотеки PS VR взяты из
   [AstroQuest](https://github.com/bigmak94/AstroQuest).
 
-wocport — форк [bloodborne_pc](https://github.com/deadinside28/bloodborne_pc), нативного порта
+Wipeport — форк [bloodborne_pc](https://github.com/deadinside28/bloodborne_pc), нативного порта
 Bloodborne от deadinside28: вся его история — история этого репозитория. Поддержка Bloodborne
 убрана, когда проект стал портом только WipEout. Кто сделал то, из чего собран порт:
 [CREDITS.md](CREDITS.md), [CONTRIBUTORS.md](CONTRIBUTORS.md).
@@ -59,7 +59,7 @@ Mesa/RADV, SteamVR с Meta Quest 2.
 ## Сборка и запуск
 
 ```bash
-git clone --recursive https://github.com/shipa-2/Wipeport.git wocport && cd wocport
+git clone --recursive https://github.com/shipa-2/Wipeport.git && cd Wipeport
 bash build.sh                              # out/woc-probe и out/gpu/libwocgpu.so
 WOC_GAME_DIR=/путь/к/CUSA05670 bash run.sh
 ```
@@ -118,7 +118,7 @@ bash launcher/woc-launcher.sh              # launcher/install-desktop.sh доб�
 
 ## Благодарности и лицензия
 
-wocport распространяется по **GNU GPL v2** ([LICENSE](LICENSE)): в нём есть код shadPS4 и
+Wipeport распространяется по **GNU GPL v2** ([LICENSE](LICENSE)): в нём есть код shadPS4 и
 AstroQuest (GPL-2.0-or-later) и Ryty (GPL-2.0-only), поэтому целое распространяется по
 GPL-2.0. Проекты, из которых собран порт, что взято из каждого и их лицензии —
 [CREDITS.md](CREDITS.md); их авторы — [CONTRIBUTORS.md](CONTRIBUTORS.md).

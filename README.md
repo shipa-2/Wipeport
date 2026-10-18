@@ -1,8 +1,8 @@
-# wocport — a native Linux port of WipEout Omega Collection
+# Wipeport — a native Linux port of WipEout Omega Collection
 
 **English** · [Русский](README.ru.md)
 
-wocport runs *WipEout Omega Collection* for PlayStation 4 (CUSA05670, update 1.07) on an
+Wipeport runs *WipEout Omega Collection* for PlayStation 4 (CUSA05670, update 1.07) on an
 x86-64 Linux PC as a native program, flat on a monitor or in a PC VR headset:
 
 - the game's original x86-64 executable runs directly on the CPU — no CPU emulation, no
@@ -13,7 +13,7 @@ x86-64 Linux PC as a native program, flat on a monitor or in a PC VR headset:
 - PlayStation VR is replaced by any OpenXR headset (SteamVR), with the PS VR libraries from
   [AstroQuest](https://github.com/bigmak94/AstroQuest).
 
-wocport is a fork of [bloodborne_pc](https://github.com/deadinside28/bloodborne_pc), the
+Wipeport is a fork of [bloodborne_pc](https://github.com/deadinside28/bloodborne_pc), the
 native port of Bloodborne by deadinside28: its whole history is this repository's history.
 Bloodborne support was removed when the project became WipEout-only. Who made what this
 port is built from: [CREDITS.md](CREDITS.md), [CONTRIBUTORS.md](CONTRIBUTORS.md).
@@ -60,7 +60,7 @@ RX 6800 XT, Mesa/RADV, SteamVR with a Meta Quest 2.
 ## Build and run
 
 ```bash
-git clone --recursive https://github.com/shipa-2/Wipeport.git wocport && cd wocport
+git clone --recursive https://github.com/shipa-2/Wipeport.git && cd Wipeport
 bash build.sh                              # out/woc-probe and out/gpu/libwocgpu.so
 WOC_GAME_DIR=/path/to/CUSA05670 bash run.sh
 ```
@@ -119,7 +119,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Credits and license
 
-wocport is licensed under the **GNU GPL v2** ([LICENSE](LICENSE)): it contains code from
+Wipeport is licensed under the **GNU GPL v2** ([LICENSE](LICENSE)): it contains code from
 shadPS4 and AstroQuest (GPL-2.0-or-later) and from Ryty (GPL-2.0-only), so the whole is
 distributed under GPL-2.0. The projects it is built from, what each gave, and their licenses:
 [CREDITS.md](CREDITS.md); their authors: [CONTRIBUTORS.md](CONTRIBUTORS.md).
