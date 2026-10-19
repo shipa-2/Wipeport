@@ -11,6 +11,11 @@ on:
 permissions:
   contents: write
 
+# A newer run of the same ref replaces one still going.
+concurrency:
+  group: appimage-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   appimage:
     runs-on: ubuntu-24.04
@@ -29,9 +34,12 @@ jobs:
           sudo docker image prune --all --force || true
           df -h /
 
+      # nixpkgs pinned: what the build compiles from source (Mesa with Vulkan only, GTK 4
+      # without GStreamer, libadwaita: ~40 minutes) is then found in the cache below. On the
+      # floating channel each of its updates rebuilt them all. Move the pin on purpose.
       - uses: cachix/install-nix-action@v31
         with:
-          nix_path: nixpkgs=channel:nixos-unstable
+          nix_path: nixpkgs=https://github.com/NixOS/nixpkgs/archive/fe13242281a67641c0102cdb1087f0ebe586c7df.tar.gz
           extra_nix_config: |
             experimental-features = nix-command flakes
 
