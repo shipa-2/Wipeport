@@ -31,4 +31,4 @@ unset PKG_CONFIG_PATH
 echo "clang $clang_version against $sysroot"
 cmake -S gpu -B out/win -G Ninja -DCMAKE_TOOLCHAIN_FILE="$PWD/tools/win-cross.cmake" \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo -DWOC_PGO=off -DWOC_LTO="${WOC_LTO:-OFF}" >/dev/null
-ninja -C out/win woc-probe woc-gpu-capabilities "$@"
+ninja -C out/win woc-probe woc-gpu-capabilities wipeport "$@"

@@ -1,0 +1,86 @@
+# Builds the Windows package (Wipeport-windows-x86_64.zip: Wipeport.exe, the launcher with its
+# Python and GTK, woc-probe.exe and the DLLs it loads; packaging/windows/package.py) with MSYS2
+# CLANG64. A tag v* adds it to the release (packaging/release.sh); a manual run (Actions ->
+# Windows -> Run workflow) leaves it as an artifact.
+name: Windows
+
+on:
+  push:
+    tags: ['v*']
+    branches: [windows]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# A newer run of the same ref replaces one still going.
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # The toolchain and libraries of packaging/windows/README.md; the packages are cached
+      # between runs by the action.
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          update: false
+          cache: true
+          install: git patch unzip curl
+          pacboy: >-
+            toolchain:p cmake:p ninja:p pkgconf:p python:p ccache:p
+            vulkan-headers:p vulkan-loader:p vulkan-memory-allocator:p glslang:p
+            sdl3:p fmt:p boost:p robin-map:p xxhash:p ffmpeg:p zydis:p
+            spirv-tools:p spirv-headers:p nlohmann-json:p openxr-sdk:p
+            python-gobject:p gtk4:p libadwaita:p adwaita-icon-theme:p
+
+      # Compilations reused from earlier runs. Keyed by run, restored from the latest one.
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/ccache
+          key: ccache-windows-${{ github.run_id }}
+          restore-keys: ccache-windows-
+
+      - name: Build
+        env:
+          WOC_CCACHE: 1
+          CCACHE_DIR: ${{ runner.temp }}/ccache
+          CCACHE_MAXSIZE: 2G
+          CCACHE_BASEDIR: ${{ github.workspace }}
+        run: |
+          ccache -z
+          bash build.sh
+          ccache -s
+
+      - name: Package
+        run: |
+          bash tools/fetch_pkgtool.sh --windows
+          python packaging/windows/package.py
+
+      - name: Checksum
+        run: cd dist && sha256sum Wipeport-windows-x86_64.zip | tee Wipeport-windows-x86_64.zip.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Wipeport-windows-x86_64
+          path: |
+            dist/Wipeport-windows-x86_64.zip
+            dist/Wipeport-windows-x86_64.zip.sha256
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash packaging/release.sh dist/Wipeport-windows-x86_64.zip dist/Wipeport-windows-x86_64.zip.sha256

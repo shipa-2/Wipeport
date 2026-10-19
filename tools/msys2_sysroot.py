@@ -30,7 +30,7 @@ def fetch(url, path):
 
 
 def unzstd(data):
-    return zstandard.ZstdDecompressor().stream_reader(io.BytesIO(data)).read()
+    return zstandard.ZstdDecompressor().stream_reader(io.BytesIO(data), read_across_frames=True).read()
 
 
 def database(cache):
@@ -86,7 +86,11 @@ def main():
         if filename in done:
             continue
         print(f'{name} ({int(packages[name]["CSIZE"][0]) >> 20} MiB)', flush=True)
-        data = unzstd(fetch(REPO + filename, cache / filename).read_bytes())
+        path = fetch(REPO + filename, cache / filename)
+        if path.stat().st_size != int(packages[name]['CSIZE'][0]):  # a cut download
+            path.unlink()
+            path = fetch(REPO + filename, cache / filename)
+        data = unzstd(path.read_bytes())
         with tarfile.open(fileobj=io.BytesIO(data)) as tar:
             members = [m for m in tar if m.name.startswith('clang64/')]
             for m in members:

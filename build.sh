@@ -2,8 +2,13 @@
 set -euo pipefail
 cd -- "$(dirname -- "$0")"
 mkdir -p out
+# ccache (CI, or WOC_CCACHE=1 with ccache installed): compilations reused between builds.
+launcher_args=()
+if [[ ${WOC_CCACHE:-} == 1 ]] && command -v ccache >/dev/null; then
+    launcher_args=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
+fi
 # Windows: MSYS2 CLANG64 (packages in packaging/windows/README.md). The GPU library is static
-# there and CMake links bb-probe.exe as well; no PGO (GCC-only flags), LTO off by default.
+# there and CMake links woc-probe.exe as well; no PGO (GCC-only flags), LTO off by default.
 case $(uname -s) in
 MINGW*|MSYS*)
     # shellcheck source=msys2-env.sh
@@ -20,15 +25,16 @@ MINGW*|MSYS*)
             git -C gpu/third_party/fsr-vulkan apply "$PWD/$patch"
         fi
     done
-    cmake -S gpu -B out/gpu -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBB_PGO=off \
-        -DBB_LTO="${BB_LTO:-OFF}" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ >/dev/null
-    echo "GPU library and loader: LTO ${BB_LTO:-OFF}"
-    if ! ninja -C out/gpu bb-probe bb-gpu-capabilities > out/gpu-build.log 2>&1; then
+    cmake -S gpu -B out/gpu -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DWOC_PGO=off \
+        -DWOC_LTO="${WOC_LTO:-OFF}" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+        "${launcher_args[@]}" >/dev/null
+    echo "GPU library and loader: LTO ${WOC_LTO:-OFF}"
+    if ! ninja -C out/gpu woc-probe woc-gpu-capabilities wipeport > out/gpu-build.log 2>&1; then
         grep -v '^\[' out/gpu-build.log | tail -40 >&2
         echo 'Build failed (full log: out/gpu-build.log)' >&2; exit 1
     fi
-    cp out/gpu/bb-probe.exe out/gpu/bb-gpu-capabilities.exe out/
-    echo "Built $PWD/out/bb-probe.exe"
+    cp out/gpu/woc-probe.exe out/gpu/woc-gpu-capabilities.exe out/gpu/Wipeport.exe out/
+    echo "Built $PWD/out/woc-probe.exe"
     exit 0
     ;;
 esac
@@ -80,7 +86,7 @@ if ! fsr_patches_apply --check 2>/dev/null; then
 fi
 fsr_patches_apply
 cmake -S gpu -B out/gpu -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DWOC_PGO="$pgo" \
-    -DWOC_LTO="${WOC_LTO:-ON}" -DWOC_PGO_DIR="$PWD/pgo" >/dev/null
+    -DWOC_LTO="${WOC_LTO:-ON}" -DWOC_PGO_DIR="$PWD/pgo" "${launcher_args[@]}" >/dev/null
 echo "GPU library: PGO $pgo, LTO ${WOC_LTO:-ON}"
 # A failed GPU build must stop here: an older libwocgpu.so would otherwise be used silently.
 if ! ninja -C out/gpu wocgpu > out/gpu-build.log 2>&1; then

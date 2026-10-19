@@ -249,6 +249,12 @@ if (WIN32)
     target_link_options(woc-probe PRIVATE -Wl,--disable-high-entropy-va "SHELL:-Xlinker --stack -Xlinker 16777216,16777216")
     add_executable(woc-gpu-capabilities ../tools/gpu_capabilities.c ../packaging/windows/woc-gpu-capabilities.rc)
     target_link_libraries(woc-gpu-capabilities PRIVATE Vulkan::Vulkan PkgConfig::SDL3)
+    # The package's Wipeport.exe: starts the launcher (packaging/windows/wipeport.c).
+    add_executable(wipeport WIN32 ../packaging/windows/wipeport.c ../packaging/windows/wipeport.rc)
+    set_target_properties(wipeport PROPERTIES OUTPUT_NAME Wipeport)
+    target_compile_options(wipeport PRIVATE -municode)
+    target_link_options(wipeport PRIVATE -municode)
+    target_link_libraries(wipeport PRIVATE shell32 ole32)
 endif()
 
 # Explicit test targets; neither launches the game nor needs a Vulkan device.

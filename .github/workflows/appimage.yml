@@ -26,12 +26,12 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      # Mesa's Vulkan drivers and GTK 4 are built from source (packaging/default.nix): the runner's
-      # 14 GB of free disk are not enough for them and the Nix store.
+      # Room for the Nix store (Mesa, GTK 4 and the build closure: ~10 GB of the runner's 14 GB
+      # free). Removed in the background while the build runs: done in place it took 2 minutes.
       - name: Free disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          sudo docker image prune --all --force || true
+          nohup sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL > /dev/null 2>&1 &
           df -h /
 
       # nixpkgs pinned: what the build compiles from source (Mesa with Vulkan only, GTK 4
@@ -46,26 +46,37 @@ jobs:
       # The store between runs: Mesa, GTK and the rest are built once.
       - uses: DeterminateSystems/magic-nix-cache-action@main
 
+      # Compilations reused from earlier runs (the LTO link still runs): the GPU library is
+      # most of the build. Keyed by run, restored from the latest one.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-linux-${{ github.run_id }}
+          restore-keys: ccache-linux-
+
       - name: Build
-        run: nix-shell --run 'bash build.sh'
+        env:
+          WOC_CCACHE: 1
+          CCACHE_DIR: /home/runner/.cache/ccache
+          CCACHE_MAXSIZE: 2G
+          CCACHE_BASEDIR: ${{ github.workspace }}
+        run: nix-shell --run 'ccache -z && bash build.sh && ccache -s'
 
       - name: Package
         run: nix-shell -p binutils --run 'bash packaging/appimage.sh'
 
-      - name: Checksums
-        run: cd dist && sha256sum Wipeport-x86_64.AppImage > SHA256SUMS && cat SHA256SUMS
+      - name: Checksum
+        run: cd dist && sha256sum Wipeport-x86_64.AppImage | tee Wipeport-x86_64.AppImage.sha256
 
       - uses: actions/upload-artifact@v4
         with:
           name: Wipeport-x86_64.AppImage
           path: |
             dist/Wipeport-x86_64.AppImage
-            dist/SHA256SUMS
+            dist/Wipeport-x86_64.AppImage.sha256
 
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" dist/Wipeport-x86_64.AppImage dist/SHA256SUMS \
-            --title "Wipeport $GITHUB_REF_NAME" --notes-file packaging/release-notes.md
+        run: bash packaging/release.sh dist/Wipeport-x86_64.AppImage dist/Wipeport-x86_64.AppImage.sha256

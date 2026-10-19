@@ -43,12 +43,16 @@ def say(text):
 
 
 def tool_path():
-    """PkgTool.Core: WOC_PKGTOOL, the port's tools/pkgtool, or on PATH."""
-    for candidate in (os.environ.get('WOC_PKGTOOL'), ROOT / 'tools/pkgtool/PkgTool.Core',
-                      shutil.which('PkgTool.Core')):
+    """PkgTool: WOC_PKGTOOL, the port's tools/pkgtool (PkgTool.Core; PkgTool.exe in the Windows
+    package), tools/pkgtool-win (Windows, from source), or on PATH."""
+    names = ('PkgTool.exe',) if os.name == 'nt' else ('PkgTool.Core',)
+    candidates = [os.environ.get('WOC_PKGTOOL')]
+    for name in names:
+        candidates += [ROOT / 'tools/pkgtool' / name, ROOT / 'tools/pkgtool-win' / name, shutil.which(name)]
+    for candidate in candidates:
         if candidate and Path(candidate).is_file():
             return Path(candidate)
-    raise SystemExit('PkgTool.Core not found (tools/pkgtool, WOC_PKGTOOL or PATH)')
+    raise SystemExit(f'{names[0]} not found (tools/pkgtool, WOC_PKGTOOL or PATH)')
 
 
 def tool_env(work):
@@ -62,8 +66,13 @@ def tool_env(work):
     return env
 
 
+# Windows: PkgTool.exe is a console program; the launcher has no console to give it.
+NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+
+
 def run_tool(tool, env, *args, capture=True):
-    result = subprocess.run([str(tool), *map(str, args)], env=env, capture_output=capture, text=True)
+    result = subprocess.run([str(tool), *map(str, args)], env=env, capture_output=capture, text=True,
+                            creationflags=NO_WINDOW)
     if result.returncode != 0:
         why = (result.stderr or result.stdout or '').strip().splitlines()
         raise RuntimeError(why[-1] if why else f'PkgTool exited with {result.returncode}')
@@ -125,7 +134,7 @@ def unpack(tool, env, package, found, work, target):
     expected = package.stat().st_size * UNPACKED
     process = subprocess.Popen([str(tool), 'pkg_extract', '--passcode', PASSCODE, str(package),
                                 str(unpacked)], env=env, stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT, text=True)
+                               stderr=subprocess.STDOUT, text=True, creationflags=NO_WINDOW)
     output = []
     reader = threading.Thread(target=lambda: output.extend(process.stdout), daemon=True)
     reader.start()

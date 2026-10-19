@@ -1,0 +1,2 @@
+// Wipeport.exe: the package's icon (launcher/wipeport.ico, tools/make_icon.py).
+1 ICON "../../launcher/wipeport.ico"

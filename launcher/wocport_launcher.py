@@ -13,7 +13,6 @@ import json
 import shutil
 import os
 import re
-import signal
 import subprocess
 import threading
 import sys
@@ -21,6 +20,7 @@ import time
 from pathlib import Path
 from wocport_assets import fsr411_problem
 from wocport_i18n import language, set_language, tr
+import wocport_platform as platform
 
 import gi
 
@@ -37,7 +37,7 @@ from patches import external_patches  # noqa: E402
 # Packaged (AppImage): generated files, saves and wipeport.ini live in WOC_DATA_DIR.
 PACKAGED = bool(os.environ.get("WOC_PREBUILT"))
 DATA_DIR = Path(os.environ.get("WOC_DATA_DIR", PORT_DIR))
-CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "wocport-launcher"
+CONFIG_DIR = platform.config_dir()
 CONFIG_FILE = CONFIG_DIR / "settings.json"
 MAX_LOG_LINES = 5000
 # The memory model (run.sh: WOC_PC_MODEL): "auto" leaves it to the GPU (the new one on AMD, the
@@ -253,6 +253,9 @@ def patches_dir(settings):
 # (github.com/NVIDIA/DLSS, lib/Linux_x86_64/rel); a game's nvngx_dlss.dll is Windows-only.
 NGX_PREFIX = "libnvidia-ngx-dlss.so."
 DLSS_SDK_URL = "https://github.com/NVIDIA/DLSS/tree/main/lib/Linux_x86_64/rel"
+# Windows: wocport_dlss.dll and NVIDIA's nvngx_dlss.dll (a game's copy, or the SDK's).
+NGX_WINDOWS = "nvngx_dlss.dll"
+DLSS_BRIDGE = "wocport_dlss.dll" if platform.WINDOWS else "libwocport_dlss.so"
 
 
 def binaries_dir():
@@ -261,6 +264,10 @@ def binaries_dir():
 
 def ngx_libraries(directory):
     """NVIDIA's DLSS runtime libraries in directory, newest version last."""
+    if platform.WINDOWS:
+        library = Path(directory) / NGX_WINDOWS
+        return [library] if library.is_file() else []
+
     def version(path):
         return tuple(int(p) if p.isdigit() else 0 for p in path.name[len(NGX_PREFIX):].split("."))
     try:
@@ -430,7 +437,7 @@ CONTROLS = [
 
 def connected_gamepads():
     """(GUID, name) of the connected gamepads (woc-gpu-capabilities --gamepads), [] if unknown."""
-    tool = PORT_DIR / ("bin" if PACKAGED else "out") / "woc-gpu-capabilities"
+    tool = PORT_DIR / ("bin" if PACKAGED else "out") / platform.executable("woc-gpu-capabilities")
     try:
         run = subprocess.run([str(tool), "--gamepads"], capture_output=True, text=True, timeout=5)
     except (OSError, subprocess.SubprocessError):
@@ -441,7 +448,7 @@ def connected_gamepads():
 def connected_displays():
     """(WOC_DISPLAY value, label) of the monitors (woc-gpu-capabilities --displays), [] if unknown.
     The value is the monitor's name, or its number when two monitors share a name."""
-    tool = PORT_DIR / ("bin" if PACKAGED else "out") / "woc-gpu-capabilities"
+    tool = PORT_DIR / ("bin" if PACKAGED else "out") / platform.executable("woc-gpu-capabilities")
     try:
         run = subprocess.run([str(tool), "--displays"], capture_output=True, text=True, timeout=5)
     except (OSError, subprocess.SubprocessError):
@@ -523,7 +530,8 @@ class LauncherWindow(Adw.ApplicationWindow):
         # replaces the assets the game reads).
         self.launch_button.set_sensitive(self.fsr411_build is None and self.pkg_install is None)
         if hasattr(self, "fsr411_button"):
-            self.fsr411_button.set_sensitive(not running)
+            # Windows: the build records the DLL's passes under Proton (Linux only).
+            self.fsr411_button.set_sensitive(not running and not platform.WINDOWS)
 
     # --- settings page -------------------------------------------------------------------
 
@@ -857,7 +865,7 @@ class LauncherWindow(Adw.ApplicationWindow):
             # The game looks for the bridge and NVIDIA's library next to woc-probe (vk_dlss.cpp); the
             # AppImage has neither (NVIDIA's DLSS SDK is not bundled): DLSS then falls back to FSR 3.1.
             binaries = PORT_DIR / ("bin" if PACKAGED else "out")
-            found = (binaries / "libwocport_dlss.so").is_file() and bool(
+            found = (binaries / DLSS_BRIDGE).is_file() and bool(
                 ngx_libraries(self.user_dir() / "dlss") or ngx_libraries(binaries))
             hint = tr("DLSS найден (нужна видеокарта NVIDIA RTX)") if found else tr(
                 "DLSS не найден: выберите библиотеку NVIDIA ниже (и нужна сборка с мостом DLSS). Игра включит FSR 3.1")
@@ -909,7 +917,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         if self.pkg_install is not None:
             self.pkg_cancelled = True
             try:
-                os.killpg(int(self.pkg_install.get_identifier()), signal.SIGTERM)
+                platform.stop_tree(int(self.pkg_install.get_identifier()))
             except OSError:
                 self.pkg_install.force_exit()
             return
@@ -941,8 +949,8 @@ class LauncherWindow(Adw.ApplicationWindow):
         launcher = Gio.SubprocessLauncher.new(
             Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE)
         launcher.set_cwd(str(PORT_DIR / "scripts"))
-        command = ["setsid", sys.executable, "-u", str(PORT_DIR / "scripts/pkg_install.py"),
-                   "--dest", str(target), *map(str, packages)]
+        command = platform.helper_command([sys.executable, "-u", str(PORT_DIR / "scripts/pkg_install.py"),
+                                           "--dest", str(target), *map(str, packages)])
         try:
             self.pkg_install = launcher.spawnv(command)
         except GLib.Error as error:
@@ -1016,7 +1024,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.store()
 
     def assign_control(self, kind, name):
-        tool = PORT_DIR / ("bin" if PACKAGED else "out") / "woc-gpu-capabilities"
+        tool = PORT_DIR / ("bin" if PACKAGED else "out") / platform.executable("woc-gpu-capabilities")
         try:
             process = Gio.Subprocess.new([str(tool), "--read-input", kind],
                                          Gio.SubprocessFlags.STDOUT_PIPE)
@@ -1377,8 +1385,8 @@ class LauncherWindow(Adw.ApplicationWindow):
         launcher.set_environ([f"{k}={v}" for k, v in self.environment().items()])
         launcher.set_cwd(str(PORT_DIR))
         try:
-            # setsid: the game and its helpers form one process group, stopped together.
-            self.process = launcher.spawnv(["setsid", "bash", str(PORT_DIR / "run.sh")])
+            # The game and its helpers form one process group, stopped together.
+            self.process = launcher.spawnv(platform.game_command(PORT_DIR))
         except GLib.Error as error:
             self.toasts.add_toast(Adw.Toast(title=tr("Не удалось запустить: {}").format(error.message)))
             return
@@ -1406,7 +1414,7 @@ class LauncherWindow(Adw.ApplicationWindow):
             return
         pid = int(self.process.get_identifier())
         try:
-            os.killpg(pid, signal.SIGTERM)
+            platform.stop_tree(pid)
         except OSError:
             self.process.force_exit()
         GLib.timeout_add_seconds(3, self.kill_if_running, pid)
@@ -1414,7 +1422,7 @@ class LauncherWindow(Adw.ApplicationWindow):
     def kill_if_running(self, pid):
         if self.process:
             try:
-                os.killpg(pid, signal.SIGKILL)
+                platform.stop_tree(pid, force=True)
             except OSError:
                 pass
         return False
@@ -1447,6 +1455,9 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.fsr411_button.set_label(tr("Отменить") if building else tr("Выбрать DLL…"))
         if progress:
             self.fsr411_row.set_subtitle(progress)
+        elif platform.WINDOWS:
+            self.fsr411_row.set_subtitle(tr("Сборка FSR 4.1.1 из DLL пока есть только в версии для Linux "
+                                            "(она записывает проходы DLL под Proton)"))
         elif not building:
             self.fsr411_row.set_subtitle(tr(
                 "Собрать FSR 4.1.1 из amd_fidelityfx_upscaler_dx12.dll 4.1.x (OptiScaler: папка "
@@ -1464,15 +1475,18 @@ class LauncherWindow(Adw.ApplicationWindow):
     def update_dlss_row(self):
         own = ngx_libraries(self.user_dir() / "dlss")
         bundled = ngx_libraries(binaries_dir())
-        bridge = (binaries_dir() / "libwocport_dlss.so").is_file()
+        bridge = (binaries_dir() / DLSS_BRIDGE).is_file()
+        version = (lambda path: path.name) if platform.WINDOWS else (lambda path: path.name[len(NGX_PREFIX):])
         if own:
-            text = tr("Своя: {}").format(own[-1].name[len(NGX_PREFIX):])
+            text = tr("Своя: {}").format(version(own[-1]))
         elif bundled:
-            text = tr("Из сборки: {}").format(bundled[-1].name[len(NGX_PREFIX):])
+            text = tr("Из сборки: {}").format(version(bundled[-1]))
+        elif platform.WINDOWS:
+            text = tr("Нет: выберите nvngx_dlss.dll (из папки игры с DLSS или DLSS SDK NVIDIA)")
         else:
             text = tr("Нет: выберите libnvidia-ngx-dlss.so.* из DLSS SDK NVIDIA ({})").format(DLSS_SDK_URL)
         if not bridge:
-            text += "\n" + tr("Эта сборка без моста DLSS (libwocport_dlss.so): DLSS работать не будет")
+            text += "\n" + tr("Эта сборка без моста DLSS ({}): DLSS работать не будет").format(DLSS_BRIDGE)
         self.dlss_row.set_subtitle(text)
         self.dlss_reset_button.set_sensitive(bool(own))
         if hasattr(self, "sharpness_row"):  # built after this row
@@ -1499,6 +1513,19 @@ class LauncherWindow(Adw.ApplicationWindow):
         dialog.open(self, None, finish)
 
     def install_ngx(self, path):
+        if platform.WINDOWS:
+            if path.name.lower() != NGX_WINDOWS:
+                self.alert(tr("Это не библиотека DLSS"), tr("Нужен файл {}").format(NGX_WINDOWS))
+                return
+            target = self.user_dir() / "dlss"
+            try:
+                target.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, target / NGX_WINDOWS)
+            except OSError as error:
+                self.alert(tr("Не удалось скопировать библиотеку"), str(error))
+                return
+            self.update_dlss_row()
+            return
         if path.suffix.lower() == ".dll":
             self.alert(tr("Нужна библиотека для Linux"), tr(
                 "{} — библиотека DLSS для Windows; на Linux NVIDIA её не загружает. Нужна "
@@ -1621,8 +1648,8 @@ class LauncherWindow(Adw.ApplicationWindow):
         launcher.set_environ([f"{k}={v}" for k, v in env.items()])
         launcher.set_cwd(str(PORT_DIR))
         try:
-            # setsid: Proton and its helpers form one process group, cancelled together.
-            self.fsr411_build = launcher.spawnv(["setsid", *command])
+            # Proton and its helpers form one process group, cancelled together.
+            self.fsr411_build = launcher.spawnv(platform.helper_command(command))
         except GLib.Error as error:
             self.toasts.add_toast(Adw.Toast(title=tr("Не удалось запустить: {}").format(error.message)))
             return
@@ -1653,7 +1680,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         pid = int(self.fsr411_build.get_identifier())
         self.fsr411_cancelled = True
         try:
-            os.killpg(pid, signal.SIGTERM)
+            platform.stop_tree(pid)
         except OSError:
             self.fsr411_build.force_exit()
 
@@ -1699,8 +1726,7 @@ def play():
     if not (Path(settings["game_dir"]).expanduser() / "eboot.bin").is_file():
         print("wocport: choose the game folder in the launcher first", file=sys.stderr)
         return 1
-    os.chdir(PORT_DIR)
-    os.execvpe("bash", ["bash", str(PORT_DIR / "run.sh")], game_environment(settings))
+    return platform.exec_game(PORT_DIR, game_environment(settings))
 
 
 def build_fsr411(arguments):

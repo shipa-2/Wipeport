@@ -286,7 +286,10 @@ EN = {
     "Своя: {}": "Your own: {}",
     "Из сборки: {}": "From this build: {}",
     "Нет: выберите libnvidia-ngx-dlss.so.* из DLSS SDK NVIDIA ({})": "None: choose libnvidia-ngx-dlss.so.* from NVIDIA's DLSS SDK ({})",
-    "Эта сборка без моста DLSS (libwocport_dlss.so): DLSS работать не будет": "This build has no DLSS bridge (libwocport_dlss.so): DLSS will not work",
+    "Эта сборка без моста DLSS ({}): DLSS работать не будет": "This build has no DLSS bridge ({}): DLSS will not work",
+    "Нет: выберите nvngx_dlss.dll (из папки игры с DLSS или DLSS SDK NVIDIA)": "None: choose nvngx_dlss.dll (from a game folder with DLSS or NVIDIA's DLSS SDK)",
+    "Нужен файл {}": "Needs the file {}",
+    "Сборка FSR 4.1.1 из DLL пока есть только в версии для Linux (она записывает проходы DLL под Proton)": "Building FSR 4.1.1 from the DLL is in the Linux version only for now (it records the DLL's passes under Proton)",
     "Библиотека DLSS NVIDIA (libnvidia-ngx-dlss.so.*)": "NVIDIA's DLSS library (libnvidia-ngx-dlss.so.*)",
     "Нужна библиотека для Linux": "A Linux library is needed",
     "{} — библиотека DLSS для Windows; на Linux NVIDIA её не загружает. Нужна libnvidia-ngx-dlss.so.<версия> из DLSS SDK NVIDIA: {}":
@@ -778,7 +781,7 @@ ZH_CN = {
     "Своя: {}": "自选：{}",
     "Из сборки: {}": "随版本附带：{}",
     "Нет: выберите libnvidia-ngx-dlss.so.* из DLSS SDK NVIDIA ({})": "无：请选择 NVIDIA DLSS SDK 中的 libnvidia-ngx-dlss.so.*（{}）",
-    "Эта сборка без моста DLSS (libwocport_dlss.so): DLSS работать не будет": "此版本没有 DLSS 桥接（libwocport_dlss.so）：DLSS 无法工作",
+    "Эта сборка без моста DLSS ({}): DLSS работать не будет": "此版本没有 DLSS 桥接（{}）：DLSS 无法工作",
     "Библиотека DLSS NVIDIA (libnvidia-ngx-dlss.so.*)": "NVIDIA DLSS 库（libnvidia-ngx-dlss.so.*）",
     "Нужна библиотека для Linux": "需要 Linux 版本的库",
     "{} — библиотека DLSS для Windows; на Linux NVIDIA её не загружает. Нужна libnvidia-ngx-dlss.so.<версия> из DLSS SDK NVIDIA: {}":

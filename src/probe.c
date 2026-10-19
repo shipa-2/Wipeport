@@ -215,6 +215,14 @@ static LONG CALLBACK vectored_fault(EXCEPTION_POINTERS *info) {
     return EXCEPTION_CONTINUE_SEARCH;
 }
 static LONG WINAPI unhandled_fault(EXCEPTION_POINTERS *info) { return fatal_exception(info); }
+static DWORD WINAPI watchdog_main(void *seconds) {
+    Sleep(*(unsigned *)seconds*1000u);
+    fputs("STOP: watchdog timeout\n",stderr);
+    runtime_report();
+    fflush(NULL);
+    TerminateProcess(GetCurrentProcess(),20);
+    return 0;
+}
 /* Guest code reads its TCB with `mov rax, gs:[0]` (link_*.py rewrote fs:[0]); on Windows
  * the displacement becomes the TEB TLS slot that holds the guest TCB (runtime_thread.c). */
 uint32_t runtime_thread_tcb_offset(void);
@@ -503,7 +511,13 @@ int main(int argc, char **argv) {
     SYSTEM_INFO system_info; GetSystemInfo(&system_info); page_size = system_info.dwPageSize;
     AddVectoredExceptionHandler(1, vectored_fault);
     SetUnhandledExceptionFilter(unhandled_fault);
-    (void)timeout_seconds; /* no watchdog on Windows */
+    /* The watchdog: the process ends after --timeout seconds (no thread stacks on Windows). */
+    if (timeout_seconds) {
+        static unsigned watchdog_seconds;
+        watchdog_seconds=timeout_seconds;
+        HANDLE watchdog=CreateThread(NULL,0,watchdog_main,&watchdog_seconds,0,NULL);
+        if (watchdog) CloseHandle(watchdog);
+    }
 #else
     page_size = (size_t)sysconf(_SC_PAGESIZE);
     /* WOC_PTRACE_ANY: a debugger may attach (kernel.yama.ptrace_scope=1 lets only parents). */
